@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+bin/
+obj/
+.vs/
+*.user
+
+# local database created by persistence/database.py
+*.db
