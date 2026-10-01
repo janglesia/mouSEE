@@ -28,11 +28,13 @@ import argparse
 import json
 import math
 import sys
+import threading
 import time
 from pathlib import Path
 
 import cv2
 import mediapipe as mp
+import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
@@ -60,6 +62,58 @@ def head_pose(matrix):
     roll = math.degrees(math.atan2(r[1, 0], r[0, 0]))
     # detection runs on the unmirrored image, so flip yaw/roll to match the mirrored output
     return {"yaw": round(-yaw, 1), "pitch": round(pitch, 1), "roll": round(-roll, 1)}
+
+
+class Preview(threading.Thread):
+    """Debug window, drawn on its own thread.
+
+    Drawing the window (especially over Remote Desktop) is slow enough to drop
+    tracking to ~30 fps if done in the main loop. Here it just shows the newest
+    frame whenever it's ready and skips the rest.
+    """
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.lock = threading.Lock()
+        self.latest = None
+        self.new_frame = threading.Event()
+        self.closed = threading.Event()  # set when the user presses q
+
+    def show(self, frame, faces):
+        with self.lock:
+            self.latest = (frame, faces)
+        self.new_frame.set()
+
+    def run(self):
+        # all OpenCV window calls have to stay on this thread
+        while not self.closed.is_set():
+            if not self.new_frame.wait(0.1):
+                continue
+            shown_at = time.monotonic()
+            self.new_frame.clear()
+            with self.lock:
+                frame, faces = self.latest
+            # half size so a 1080p preview fits on screen. shrink first, drawing on the small image is cheaper
+            fh, fw = frame.shape[0] // 2, frame.shape[1] // 2
+            view = cv2.resize(cv2.flip(frame, 1), (fw, fh))  # mirror to match the output coordinates
+            for f in faces:
+                # all 478 dots in one numpy op. a python loop of cv2.circle calls hogs the GIL
+                # and slows down the tracking thread
+                pts = (np.array(f["landmarks"])[:, :2] * (fw, fh)).astype(int)
+                pts = pts.clip((0, 0), (fw - 2, fh - 2))
+                for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):  # 2x2 px dots
+                    view[pts[:, 1] + dy, pts[:, 0] + dx] = (0, 255, 0)
+                for x, y in f["irises"].values():
+                    cv2.circle(view, (int(x * fw), int(y * fh)), 4, (0, 0, 255), -1)
+                p = f["pose"]
+                cv2.putText(view, f"yaw {p['yaw']:+.0f}  pitch {p['pitch']:+.0f}  roll {p['roll']:+.0f}",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            cv2.imshow("Tracker preview (q to quit)", view)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                self.closed.set()
+            # 30 fps is plenty for a preview, leave the rest of the CPU for tracking
+            time.sleep(max(0.0, 1 / 30 - (time.monotonic() - shown_at)))
+        cv2.destroyAllWindows()
 
 
 def main():
@@ -113,14 +167,17 @@ def main():
     start = time.monotonic()
     last_ts = -1
 
+    preview = None
+    if args.preview:
+        preview = Preview()
+        preview.start()
+
     try:
-        while True:
+        while preview is None or not preview.closed.is_set():
             ok, frame = cap.read()
             if not ok:
                 emit({"type": "error", "message": "Camera stopped returning frames"})
                 break
-
-            fh, fw = frame.shape[:2]
 
             # VIDEO mode requires strictly increasing timestamps
             ts = int((time.monotonic() - start) * 1000)
@@ -151,26 +208,16 @@ def main():
                 faces.append(face)
             emit({"type": "frame", "t": ts, "faces": faces})
 
-            if args.preview:
-                view = cv2.flip(frame, 1)  # mirror to match the output coordinates
-                for f in faces:
-                    for x, y, _ in f["landmarks"]:
-                        cv2.circle(view, (int(x * fw), int(y * fh)), 2, (0, 255, 0), -1)
-                    for x, y in f["irises"].values():
-                        cv2.circle(view, (int(x * fw), int(y * fh)), 8, (0, 0, 255), -1)
-                    p = f["pose"]
-                    cv2.putText(view, f"yaw {p['yaw']:+.0f}  pitch {p['pitch']:+.0f}  roll {p['roll']:+.0f}",
-                                (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 255, 255), 3)
-                # Half size so a 1080p preview fits on screen
-                cv2.imshow("Tracker preview (q to quit)", cv2.resize(view, (fw // 2, fh // 2)))
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+            if preview:
+                preview.show(frame, faces)
     except (BrokenPipeError, KeyboardInterrupt):
         pass  # C# app closed or Ctrl+C
     finally:
+        if preview:
+            preview.closed.set()
+            preview.join(timeout=1)
         cap.release()
         landmarker.close()
-        cv2.destroyAllWindows()
     return 0
 
 

@@ -102,7 +102,7 @@ Camera ready (1920x1080). Press Ctrl+C to stop.
 
 `yaw` / `pitch` / `roll` are your head angle in degrees (0 when facing the camera). `iris` is where each iris is in the image, from (0, 0) top left to (1, 1) bottom right. `blink` goes from 0 (open) to 1 (closed). Everything should change as you move. Ctrl+C to stop.
 
-A camera window also opens, showing the landmarks on your face. Close it with `q` or stop everything with Ctrl+C.
+A camera window also opens, showing the landmarks on your face. Close it with `q` or stop everything with Ctrl+C. The window only updates at 30 fps to save CPU, the fps in the status line is the actual tracking speed.
 
 MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
 
