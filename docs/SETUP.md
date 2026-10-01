@@ -13,7 +13,7 @@ How to set up a Windows machine to work on mouSEE. Once you're done, go back to 
 | MSYS2 (for `make`) | Running the shortcuts in the Makefile |
 | VS Code or Visual Studio | Editing the code |
 
-OpenCV and MediaPipe are Python packages. You don't install them separately, `make setup` installs them into the project's own Python environment (see step 6).
+OpenCV, MediaPipe and scikit-learn are Python packages. You don't install them separately, `make setup` installs them into the project's own Python environment (see step 6).
 
 The commands in this guide are for Git Bash. In VS Code you can make it the default terminal: open the terminal dropdown (the arrow next to the `+`), choose **Select Default Profile** and pick **Git Bash**.
 
@@ -103,7 +103,7 @@ make setup
 
 This:
 1. creates a Python environment in `tracker/.venv` (using Python 3.12),
-2. installs the Python packages from `tracker/requirements.txt` into it (MediaPipe, OpenCV),
+2. installs the Python packages from `tracker/requirements.txt` into it (MediaPipe, OpenCV, scikit-learn),
 3. downloads the face model to `tracker/face_landmarker.task`,
 4. builds the C# app.
 
@@ -116,7 +116,7 @@ git -v
 py -3.12 --version
 dotnet --list-sdks
 make --version
-tracker/.venv/Scripts/python -c "import cv2, mediapipe; print('OpenCV', cv2.__version__, '/ MediaPipe', mediapipe.__version__)"
+tracker/.venv/Scripts/python -c "import cv2, mediapipe, sklearn; print('OpenCV', cv2.__version__, '/ MediaPipe', mediapipe.__version__, '/ scikit-learn', sklearn.__version__)"
 ```
 
 If those all print versions, setup is done.
@@ -137,6 +137,7 @@ For problems running the program, see [Troubleshooting in the README](../README.
 | Python 3.12 | Runs the tracker | [python.org](https://www.python.org/downloads/windows/) (3.12.10 installer) |
 | OpenCV | Reads the webcam | `make setup` (Python package) |
 | MediaPipe | Face and eye tracking | `make setup` (Python package) |
+| scikit-learn | Machine learning (planned, for calibration) | `make setup` (Python package) |
 | .NET SDK 10 | Builds and runs the C# app | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) |
 | make | Project shortcuts | MSYS2, `pacman -S make` |
 | Visual Studio (optional) | Full C# IDE, handy once the app has a UI | [Visual Studio Community](https://visualstudio.microsoft.com/free-developer-offers/) |

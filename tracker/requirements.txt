@@ -1,3 +1,4 @@
 # needs Python 3.12, see docs/SETUP.md
 mediapipe
 opencv-python
+scikit-learn

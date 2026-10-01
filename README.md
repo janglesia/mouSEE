@@ -13,6 +13,19 @@ There are two programs:
 
 The tracker prints one line of JSON per frame and the app reads those lines. Python is used for the vision part because that's where the good libraries are. C# is used for the app because it's easier to do Windows things in (moving the cursor, settings window, etc.).
 
+## Prerequisites
+
+| What | Version | Get it |
+|------|---------|--------|
+| Windows | 10 or 11 | |
+| Webcam | any, 60 fps is best | |
+| Git | any | [git-scm.com](https://git-scm.com/install/windows) |
+| Python | 3.12 (not 3.13+) | [python.org](https://www.python.org/downloads/windows/), 3.12.10 installer |
+| .NET SDK | 10 | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) |
+| make | any | MSYS2, `pacman -S make` |
+
+OpenCV, MediaPipe and scikit-learn get installed by `make setup`, you don't need to install them yourself. Step by step install instructions are in [docs/SETUP.md](docs/SETUP.md).
+
 ## Files
 
 ```
@@ -54,7 +67,7 @@ The empty folders are placeholders for features that haven't been written yet. E
 
 ## Getting started
 
-You need Windows 10/11, a webcam, Git, Python 3.12, the .NET 10 SDK and make (from MSYS2). Install steps are in [docs/SETUP.md](docs/SETUP.md). Then:
+Once the prerequisites are installed:
 
 ```bash
 git clone https://github.com/janglesia/mouSEE.git
