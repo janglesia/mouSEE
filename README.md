@@ -271,7 +271,7 @@ If you installed OpenCV somewhere else, update the path accordingly.
 Once all dependencies have been installed, clone the project repository:
 
 ```bash
-git clone [<repository-url>](https://github.com/janglesia/mouSEE.git)
+git clone https://github.com/janglesia/mouSEE.git
 ```
 
 Navigate into the project directory:
