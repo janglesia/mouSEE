@@ -20,11 +20,17 @@ The tracker prints one line of JSON per frame and the app reads those lines. Pyt
 | Windows | 10 or 11 | |
 | Webcam | any, 60 fps is best | |
 | Git | any | [git-scm.com](https://git-scm.com/install/windows) |
-| Python | 3.12 (not 3.13+) | [python.org](https://www.python.org/downloads/windows/), 3.12.10 installer |
+| Python | 3.12 (not 3.13+), **64-bit x64/AMD64 installer, not ARM64** | [python.org](https://www.python.org/downloads/windows/), 3.12.10 "Windows installer (64-bit)" |
 | .NET SDK | 10 | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) |
-| make | any | MSYS2, `pacman -S make` |
+| make | any, **from MSYS2** | MSYS2, `pacman -S make` |
 
 OpenCV, MediaPipe and scikit-learn get installed by `make setup`, you don't need to install them yourself. Step by step install instructions are in [docs/SETUP.md](docs/SETUP.md).
+
+**make has to come from MSYS2** (for now). The Makefile uses Unix commands like `touch` and `rm`, which Windows doesn't have. MSYS2 installs them next to `make` in `C:\msys64\usr\bin`, and that folder must be on your PATH (see [docs/SETUP.md](docs/SETUP.md) step 4). A `make` installed some other way (winget, Chocolatey, GnuWin32) comes without these commands, so `make setup` fails with "process_begin: CreateProcess(NULL, touch ...) failed".
+
+**On ARM PCs (Snapdragon / Windows on ARM):** install the regular 64-bit (AMD64) Python, not the ARM64 one. OpenCV and MediaPipe don't have ready-made ARM64 Windows versions for Python 3.12, so `make setup` tries to build them from source and fails with "Unknown compiler(s)". The AMD64 Python runs fine on ARM through Windows' built-in emulation.
+
+**Smart App Control** (Windows 11) blocks MediaPipe, because its `libmediapipe.dll` isn't digitally signed. If the tracker fails to start and Windows says an Application Control policy blocked it, turn Smart App Control off: Windows Security → App & browser control → Smart App Control settings → Off. Note that on most Windows 11 versions you can't turn it back on without resetting Windows.
 
 ## Files
 
@@ -166,5 +172,8 @@ Want to run things by hand, or use tracker options like `--min-confidence`? See 
 - **`make reset` fails to delete files**: the app or tracker is still running. Stop it and try again.
 - **Low fps**: try a lower resolution, e.g. `make run 720`. Webcams also drop frame rate in dark rooms.
 - **No face detected**: check lighting, stay within ~2 m, or try `--min-confidence 0.3`.
+- **`make setup` fails with "Unknown compiler(s)" while installing opencv-python / numpy**: you have the ARM64 Python. Uninstall it, install the 64-bit (AMD64) Python 3.12, delete `tracker/.venv` and run `make setup` again. See [Prerequisites](#prerequisites).
+- **`make setup` fails with "CreateProcess(NULL, touch ...) failed"** (or `rm` in `make clean` / `make reset`): your `make` isn't the MSYS2 one, or `C:\msys64\usr\bin` isn't on your PATH. See [Prerequisites](#prerequisites).
+- **Tracker is blocked by an "Application Control policy"**: Smart App Control is blocking `libmediapipe.dll`. See [Prerequisites](#prerequisites) for how to turn it off.
 
 For install problems (`make` not found, wrong Python version, pip failing), see [docs/SETUP.md](docs/SETUP.md#troubleshooting).

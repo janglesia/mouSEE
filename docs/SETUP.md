@@ -31,7 +31,7 @@ The commands in this guide are for Git Bash. In VS Code you can make it the defa
 
 ## 2. Install Python 3.12
 
-1. Go to https://www.python.org/downloads/windows/ and download the Windows installer (64-bit) for Python 3.12.10 (last 3.12 version that has an installer). Don't get 3.13 or newer, MediaPipe might not work on it.
+1. Go to https://www.python.org/downloads/windows/ and download the Windows installer (64-bit) for Python 3.12.10 (last 3.12 version that has an installer). Don't get 3.13 or newer, MediaPipe might not work on it. **Get the 64-bit (AMD64) installer even on an ARM PC** (Snapdragon / Windows on ARM): the ARM64 Python can't install OpenCV and MediaPipe. The AMD64 one runs fine on ARM through Windows' built-in emulation.
 2. Run the installer. **Tick "Add python.exe to PATH"** at the bottom of the first screen, then click Install Now.
 3. Check it worked (in a new terminal):
 
@@ -126,6 +126,8 @@ If those all print versions, setup is done.
 - **Command not found** (`git`, `py`, `dotnet`, `make`): close and reopen VS Code / Git Bash after installing. If it still fails, check the program's folder is in your PATH (for make, that's `C:\msys64\usr\bin`, see step 4 above). Restart the computer if needed.
 - **`py -3.12` says no such version**: Python 3.12 isn't installed, see step 2 above.
 - **pip fails installing mediapipe**: Python version is probably too new. Use 3.12.
+- **pip fails with "Unknown compiler(s)" while installing opencv-python / numpy**: you have the ARM64 Python. Uninstall it, install the 64-bit (AMD64) Python 3.12 (see step 2), delete `tracker/.venv` and run `make setup` again. Deleting `.venv` matters, otherwise `make setup` keeps reusing the old ARM64 environment.
+- **Tracker is blocked by an "Application Control policy"**: Windows 11's Smart App Control is blocking MediaPipe's unsigned `libmediapipe.dll`. See [Prerequisites in the README](../README.md#prerequisites) for how to turn it off.
 
 For problems running the program, see [Troubleshooting in the README](../README.md#troubleshooting).
 
