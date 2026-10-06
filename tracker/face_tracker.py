@@ -181,6 +181,7 @@ def main():
 
             # VIDEO mode requires strictly increasing timestamps
             ts = int((time.monotonic() - start) * 1000)
+            wall = int(time.time() * 1000)  # Unix ms, for latency measurement in the C# app
             if ts <= last_ts:
                 ts = last_ts + 1
             last_ts = ts
@@ -206,7 +207,7 @@ def main():
                                     if c.category_name != "_neutral"},
                 }
                 faces.append(face)
-            emit({"type": "frame", "t": ts, "faces": faces})
+            emit({"type": "frame", "t": ts, "wall": wall, "faces": faces})
 
             if preview:
                 preview.show(frame, faces)
