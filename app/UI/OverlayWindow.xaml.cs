@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
 
@@ -24,10 +22,14 @@ public partial class OverlayWindow : Window
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
 
-    // ---- Tracker ----
-    private readonly CancellationTokenSource _cts = new();
-    private readonly JsonSerializerOptions _json = new() { PropertyNameCaseInsensitive = true };
-    private Process? _proc;
+    private const double OverlayMargin = 10;
+
+    // ---- Tracker (shared, owned by App) ----
+    private readonly TrackerClient _tracker = ((App)Application.Current).Tracker;
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private long _lastUpdateMs, _fpsWindowStartMs;
+    private int _framesInWindow;
+    private double _fps;
 
     public OverlayWindow()
     {
@@ -35,20 +37,26 @@ public partial class OverlayWindow : Window
         SourceInitialized += OnSourceInitialized;
         // text height changes (e.g. "no face" vs. full readout), so keep the bottom edge pinned
         SizeChanged += (_, _) => PositionBottomLeft();
+
         Loaded += async (_, _) =>
         {
             PositionBottomLeft();
-            await RunTrackerAsync(_cts.Token);
+            _tracker.MessageReceived += OnMessage;
+            _tracker.LogReceived += OnLog;
+            _tracker.Failed += OnFailed;
+            // no-op if something else already started the tracker
+            await _tracker.RunAsync(Environment.GetCommandLineArgs().Skip(1).ToArray());
         };
-        Closing += (_, _) => StopTracker();
+
         Closed += (_, _) =>
         {
+            _tracker.MessageReceived -= OnMessage;
+            _tracker.LogReceived -= OnLog;
+            _tracker.Failed -= OnFailed;
             var hwnd = new WindowInteropHelper(this).Handle;
             UnregisterHotKey(hwnd, HOTKEY_ID);
         };
     }
-
-    private const double OverlayMargin = 10;
 
     private void PositionBottomLeft()
     {
@@ -80,128 +88,40 @@ public partial class OverlayWindow : Window
         return IntPtr.Zero;
     }
 
-    // Looks for a "tracker" folder with face_tracker.py, walking up from the exe and the working dir
-    private static string? FindTrackerDir()
+    // ---- Tracker events ----
+    private void OnLog(string line) => Debug.WriteLine($"[tracker] {line}"); // may be a background thread
+
+    private void OnFailed(string reason) => DebugText.Text = reason;
+
+    private void OnMessage(TrackerMessage msg)
     {
-        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        switch (msg.Type)
         {
-            var dir = new DirectoryInfo(start);
-            while (dir is not null)
-            {
-                string candidate = Path.Combine(dir.FullName, "tracker");
-                if (File.Exists(Path.Combine(candidate, "face_tracker.py"))) return candidate;
+            case "ready":
+                DebugText.Text = $"Camera ready ({msg.Width}x{msg.Height})";
+                break;
 
-                // sibling of app/ (the original layout)
-                string sibling = Path.Combine(dir.FullName, "..", "tracker");
-                if (File.Exists(Path.Combine(sibling, "face_tracker.py"))) return Path.GetFullPath(sibling);
+            case "error":
+                DebugText.Text = $"Tracker error:\n{msg.Message}";
+                break;
 
-                dir = dir.Parent;
-            }
-        }
-        return null;
-    }
-
-    private async Task RunTrackerAsync(CancellationToken ct)
-    {
-        string? trackerDir = FindTrackerDir();
-        if (trackerDir is null)
-        {
-            DebugText.Text = "Can't find tracker/face_tracker.py";
-            return;
-        }
-
-        string scriptPath = Path.Combine(trackerDir, "face_tracker.py");
-        string venvPython = Path.Combine(trackerDir, ".venv", "Scripts", "python.exe");
-        string pythonExe = File.Exists(venvPython) ? venvPython : "python";
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = pythonExe,
-            ArgumentList = { "-u", scriptPath },
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = trackerDir,
-        };
-        // pass command-line args through to the tracker (--preview, --camera 1, ...)
-        foreach (var arg in Environment.GetCommandLineArgs().Skip(1)) psi.ArgumentList.Add(arg);
-
-        try
-        {
-            _proc = Process.Start(psi);
-        }
-        catch (Exception ex)
-        {
-            DebugText.Text = $"Failed to start tracker:\n{ex.Message}";
-            return;
-        }
-        if (_proc is null) { DebugText.Text = "Failed to start tracker."; return; }
-
-        string lastLog = "";
-        _proc.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is null) return;
-            Debug.WriteLine($"[tracker] {e.Data}");
-            lastLog = e.Data; // read on the UI thread only when we show errors
-        };
-        _proc.BeginErrorReadLine();
-
-        var clock = Stopwatch.StartNew();
-        long lastUpdateMs = 0, fpsWindowStartMs = 0;
-        int framesInWindow = 0;
-        double fps = 0;
-
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                string? line = await _proc.StandardOutput.ReadLineAsync(ct);
-                if (line is null)
+            case "frame":
+                _framesInWindow++;
+                long now = _clock.ElapsedMilliseconds;
+                if (now - _fpsWindowStartMs >= 1000)
                 {
-                    DebugText.Text = $"Tracker exited.\n{lastLog}";
-                    break;
+                    _fps = _framesInWindow * 1000.0 / (now - _fpsWindowStartMs);
+                    _framesInWindow = 0;
+                    _fpsWindowStartMs = now;
                 }
 
-                TrackerMessage? msg;
-                try { msg = JsonSerializer.Deserialize<TrackerMessage>(line, _json); }
-                catch (JsonException) { Debug.WriteLine($"[bad line] {line}"); continue; }
-                if (msg is null) continue;
-
-                switch (msg.Type)
+                // update the text ~10 times a second
+                if (now - _lastUpdateMs >= 100)
                 {
-                    case "ready":
-                        DebugText.Text = $"Camera ready ({msg.Width}x{msg.Height})";
-                        break;
-
-                    case "error":
-                        DebugText.Text = $"Tracker error:\n{msg.Message}";
-                        break;
-
-                    case "frame":
-                        framesInWindow++;
-                        long now = clock.ElapsedMilliseconds;
-                        if (now - fpsWindowStartMs >= 1000)
-                        {
-                            fps = framesInWindow * 1000.0 / (now - fpsWindowStartMs);
-                            framesInWindow = 0;
-                            fpsWindowStartMs = now;
-                        }
-
-                        // update the text ~10 times a second
-                        if (now - lastUpdateMs >= 100)
-                        {
-                            lastUpdateMs = now;
-                            DebugText.Text = FormatFrame(msg, fps, FormatLatency(msg.Wall));
-                        }
-                        break;
+                    _lastUpdateMs = now;
+                    DebugText.Text = FormatFrame(msg, _fps, FormatLatency(msg.Wall));
                 }
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            DebugText.Text = $"Tracker loop failed:\n{ex.Message}";
+                break;
         }
     }
 
@@ -226,20 +146,17 @@ public partial class OverlayWindow : Window
         double blinkL = f.Blendshapes.GetValueOrDefault("eyeBlinkLeft");
         double blinkR = f.Blendshapes.GetValueOrDefault("eyeBlinkRight");
 
+        // from eye_extractor.py; this line also confirms the Eyes records are parsing
+        var gz = f.Eyes?.Gaze;
+        string gazeLine = gz is { H: double gh, V: double gv }
+            ? $"gaze h {gh:+0.000;-0.000;+0.000}  v {gv:+0.000;-0.000;+0.000}  {gz.Direction}"
+            : "gaze n/a (eyes closed or Eyes not parsed)";
+
         return $"{header}\n" +
                $"yaw {p.Yaw,5:0}  pitch {p.Pitch,5:0}  roll {p.Roll,5:0}\n" +
                $"iris L ({f.Irises.Left[0]:0.000}, {f.Irises.Left[1]:0.000})\n" +
                $"iris R ({f.Irises.Right[0]:0.000}, {f.Irises.Right[1]:0.000})\n" +
-               $"blink L {blinkL:0.00}  R {blinkR:0.00}";
-    }
-
-    private void StopTracker()
-    {
-        _cts.Cancel();
-        try
-        {
-            if (_proc is { HasExited: false }) _proc.Kill(entireProcessTree: true);
-        }
-        catch { /* already gone */ }
+               $"blink L {blinkL:0.00}  R {blinkR:0.00}\n" +
+               gazeLine;
     }
 }
