@@ -1,4 +1,6 @@
+~10/7/2026~ 
+2:14pm
+
 Calibration workflow UI
 The update adds a nine-point calibration preview with the mouSEE logo as the active target, progress display, and navigation. It exposes backend hooks for calibration start, target presentation and acceptance, completion, and cancellation. The backend can also report progress and status to the window.
-
 The tracker process is now managed by a shared TrackerClient, and the overlay consumes tracker events from it. Calibration capture, calculation, and persistence are not included yet; this provides the UI and integration points for that work. The project builds successfully.
