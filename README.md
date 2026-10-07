@@ -112,6 +112,11 @@ A camera window also opens, showing the landmarks on your face. Close it with `q
 
 MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
 
+## Unit tests
+
+Eye extractor unit test -
+run from the project root with: `python -m unittest tests.test_eye_extractor`
+
 ## Make commands
 
 Run these from the project folder.

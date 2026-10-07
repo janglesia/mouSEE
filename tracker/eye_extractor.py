@@ -40,6 +40,12 @@ SMOOTHING_ALPHA = 0.20
 # Minimum valid eye width in pixels.
 MIN_EYE_WIDTH_PX = 1.0
 
+# Thresholds for frame validation
+MAX_EYE_WIDTH_JUMP = 0.35
+MAX_GAZE_JUMP_H = 0.75
+MAX_GAZE_JUMP_V = 0.75
+MIN_IRIS_DIAMETER_PX = 3.0
+
 def _r(x, n=4):
     return round(float(x), n)
 
@@ -74,7 +80,53 @@ class GazeSmoother:
         self.value = x if self.value is None else self.alpha * x + (1 - self.alpha) * self.value
         return tuple(self.value)
 
-def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None):
+# checks previous valid eye to compare to new read eye
+class EyeValidator:
+    def __init__(self):
+        self.prev_eye = None
+
+    def reset(self):
+        self.prev_eye = None
+
+    def is_valid(self, eye):
+        # Accept the first valid eye as the reference.
+        if self.prev_eye is None:
+            return True
+
+        prev_eye = self.prev_eye
+
+        # Check for sudden jumps in eye width or gaze direction
+        width_jump = abs(eye["width_px"] - prev_eye["width_px"]) / max(prev_eye["width_px"], 1.0)
+
+        # if the eye width jump was too large to be reasonable, reject the new eye data
+        if width_jump > MAX_EYE_WIDTH_JUMP:
+            return False
+
+        # Check that gaze direction does not jump unreasonably far from previous frame
+        gaze_jump_h = abs(eye["offset"]["h"] - prev_eye["offset"]["h"])
+        gaze_jump_v = abs(eye["offset"]["v"] - prev_eye["offset"]["v"])
+
+        # if the gaze jump is too large to be reasonable, reject the new eye data
+        if gaze_jump_h > MAX_GAZE_JUMP_H or gaze_jump_v > MAX_GAZE_JUMP_V:
+            return False
+
+        # check that the iris diameter is a reasonable size
+        iris_px = eye["iris"]["diameter_px"]
+        # if not, reject the new eye data
+        if iris_px < MIN_IRIS_DIAMETER_PX:
+            return False
+
+        # if it surpasses all checks, return true
+        return True
+
+    # update the current eye as new reference
+    def update(self, eye):
+        if self.is_valid(eye):
+            self.prev_eye = eye
+            return True
+        return False
+
+def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None, eye_validator=None):
     if landmarks is None:
         return None
 
@@ -97,109 +149,123 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None)
     px = lm * frame_size
     out = {}
 
+    # loop through each eye
     for name, e in EYES.items():
-        left_corner = px[e["left_corner"]]
-        right_corner = px[e["right_corner"]]
-        axis = right_corner - left_corner
-        eye_width = float(np.linalg.norm(axis))
+        try: # try catch block for reading in the eye landmarks to prevent crashing
+            left_corner = px[e["left_corner"]]
+            right_corner = px[e["right_corner"]]
+            axis = right_corner - left_corner
+            eye_width = float(np.linalg.norm(axis))
 
-        if eye_width < MIN_EYE_WIDTH_PX:
-            return None
+            if eye_width < MIN_EYE_WIDTH_PX:
+                continue
 
-        # u = direction along the eye from left_corner to right_corner. v = perpendicular vector, vertical axis
-        u = axis / eye_width
-        v = np.array([-u[1], u[0]])
-        half_width = eye_width / 2.0
-        eye_center = (left_corner + right_corner) / 2.0
+            # u = direction along the eye from left_corner to right_corner. v = perpendicular vector, vertical axis
+            u = axis / eye_width
+            v = np.array([-u[1], u[0]])
+            half_width = eye_width / 2.0
+            eye_center = (left_corner + right_corner) / 2.0
 
-        # Try to reduce jitter by using the surrounding iris landmarks
-        iris_indices = (e["iris"], *e["iris_ring"])
-        iris_points = px[list(iris_indices)]
-        iris_center_landmark = px[e["iris"]]
-        iris_center = _mean_point(iris_points)
+            # Try to reduce jitter by using the surrounding iris landmarks
+            iris_indices = (e["iris"], *e["iris_ring"])
+            iris_points = px[list(iris_indices)]
+            iris_center_landmark = px[e["iris"]]
+            iris_center = _mean_point(iris_points)
 
-        iris_radius = np.linalg.norm(
-            px[list(e["iris_ring"])] - iris_center,
-            axis=1,
-        )
+            iris_radius = np.linalg.norm(
+                px[list(e["iris_ring"])] - iris_center,
+                axis=1,
+            )
 
-        iris_diameter = float(np.mean(iris_radius) * 2.0)
+            iris_diameter = float(np.mean(iris_radius) * 2.0)
 
-        upper_lid_points = px[list(e["upper_lid"])]
-        lower_lid_points = px[list(e["lower_lid"])]
-        upper_lid = _mean_point(upper_lid_points)
-        lower_lid = _mean_point(lower_lid_points)
+            upper_lid_points = px[list(e["upper_lid"])]
+            lower_lid_points = px[list(e["lower_lid"])]
+            upper_lid = _mean_point(upper_lid_points)
+            lower_lid = _mean_point(lower_lid_points)
 
-        lid_mid = (upper_lid + lower_lid) / 2.0
+            lid_mid = (upper_lid + lower_lid) / 2.0
 
-        # Actual geometric eyelid gap.
-        lid_gap = _distance(upper_lid, lower_lid)
+            # Actual geometric eyelid gap.
+            lid_gap = _distance(upper_lid, lower_lid)
 
-        # Normalize by eye width so this measurement is reasonably independent of distance from the camera.
-        openness = lid_gap / eye_width
+            # Normalize by eye width so this measurement is reasonably independent of distance from the camera.
+            openness = lid_gap / eye_width
 
-        # Horizontal: -1 far to one corner, 0 is centered, +1 far to the other corner
-        # Vertical: relative to the midpoint of the upper/lower lids
-        h_offset = float((iris_center - eye_center) @ u / half_width)
-        v_offset = float((iris_center - lid_mid) @ v / half_width)
+            # Horizontal: -1 far to one corner, 0 is centered, +1 far to the other corner
+            # Vertical: relative to the midpoint of the upper/lower lids
+            h_offset = float((iris_center - eye_center) @ u / half_width)
+            v_offset = float((iris_center - lid_mid) @ v / half_width)
 
-        iris_to_center = iris_center - eye_center
-        iris_angle = math.degrees(math.atan2(iris_to_center @ v, iris_to_center @ u))
-        iris_distance = float(np.linalg.norm(iris_to_center) / half_width)
+            iris_to_center = iris_center - eye_center
+            iris_angle = math.degrees(math.atan2(iris_to_center @ v, iris_to_center @ u))
+            iris_distance = float(np.linalg.norm(iris_to_center) / half_width)
 
-        blink = None
-        if blendshapes:
-            blink_value = blendshapes.get(e["blink"])
+            blink = None
+            if blendshapes:
+                blink_value = blendshapes.get(e["blink"])
 
-            if blink_value is not None:
-                try:
-                    blink = float(blink_value)
-                except (TypeError, ValueError):
-                    blink = None
+                if blink_value is not None:
+                    try:
+                        blink = float(blink_value)
+                    except (TypeError, ValueError):
+                        blink = None
 
-        if blink is not None:
-            closed = blink > CLOSED_BLINK
-        else:
-            closed = openness < CLOSED_OPENNESS
+            if blink is not None:
+                closed = blink > CLOSED_BLINK
+            else:
+                closed = openness < CLOSED_OPENNESS
 
-        out[name] = {
-            "outline": (lm[list(e["outline"])].round(4).tolist()),
-            "corners": {
-                "left": lm[e["left_corner"]].round(4).tolist(),
-                "right": lm[e["right_corner"]].round(4).tolist(),
-            },
-            "lids": {
-                "upper": lm[list(e["upper_lid"])].round(4).tolist(),
-                "lower": lm[list(e["lower_lid"])].round(4).tolist(),
-                "upper_center": (upper_lid / frame_size).round(4).tolist(),
-                "lower_center": (lower_lid / frame_size).round(4).tolist(),
-            },
-            "iris": {
-                # MediaPipe center landmark.
-                "landmark_center": ((iris_center_landmark / frame_size).round(4).tolist()),
+            out[name] = {
+                "outline": (lm[list(e["outline"])].round(4).tolist()),
+                "corners": {
+                    "left": lm[e["left_corner"]].round(4).tolist(),
+                    "right": lm[e["right_corner"]].round(4).tolist(),
+                },
+                "lids": {
+                    "upper": lm[list(e["upper_lid"])].round(4).tolist(),
+                    "lower": lm[list(e["lower_lid"])].round(4).tolist(),
+                    "upper_center": (upper_lid / frame_size).round(4).tolist(),
+                    "lower_center": (lower_lid / frame_size).round(4).tolist(),
+                },
+                "iris": {
+                    # MediaPipe center landmark.
+                    "landmark_center": ((iris_center_landmark / frame_size).round(4).tolist()),
 
-                # Averaged center that the gaze calculations use.
-                "center": (iris_center / frame_size).round(4).tolist(),
-                "diameter_px": _r(iris_diameter, 1),
+                    # Averaged center that the gaze calculations use.
+                    "center": (iris_center / frame_size).round(4).tolist(),
+                    "diameter_px": _r(iris_diameter, 1),
 
-                "ring": (lm[list(e["iris_ring"])].round(4).tolist()),
-            },
-            "offset": {"h": _r(h_offset), "v": _r(v_offset), "angle": _r(iris_angle, 1), "distance": _r(iris_distance)},
-            "width_px": _r(eye_width, 1),
-            "lid_gap_px": _r(lid_gap, 1),
-            "openness": _r(openness),
-            "blink": (
-                None
-                if blink is None
-                else _r(blink, 3)
-            ),
-            "closed": bool(closed),
-        }
+                    "ring": (lm[list(e["iris_ring"])].round(4).tolist()),
+                },
+                "offset": {"h": _r(h_offset), "v": _r(v_offset), "angle": _r(iris_angle, 1), "distance": _r(iris_distance)},
+                "width_px": _r(eye_width, 1),
+                "lid_gap_px": _r(lid_gap, 1),
+                "openness": _r(openness),
+                "blink": (
+                    None
+                    if blink is None
+                    else _r(blink, 3)
+                ),
+                "closed": bool(closed),
+            }
+
+            # eye validator call
+            if not eye_validator[name].update(out[name]):
+                continue
+
+        # skip this eye and only use the other eye if something goes wrong
+        except(IndexError, TypeError, ValueError):
+            continue
+
+    # if both eyes are causing problems, return None
+    if not out:
+        return None
 
     open_eyes = [
         out[name]
         for name in ("left", "right")
-        if not out[name]["closed"]
+        if name in out and not out[name]["closed"]
     ]
 
     if open_eyes:
@@ -273,6 +339,10 @@ def draw_eyes(view, eyes, frame_w):
         return (int(point[0] * fw), int(point[1] * fh))
 
     for name in ("left", "right"):
+        # if an eye is not detected, skip drawing it
+        if name not in eyes:
+            continue
+
         e = eyes[name]
         pts = np.array([to_px(p) for p in e["outline"]], dtype=np.int32)
         cv2.polylines(view, [pts], True, (0, 255, 255), 1)
@@ -344,6 +414,12 @@ def _main():
     # One smoother persists across frames.
     gaze_smoother = GazeSmoother(alpha=SMOOTHING_ALPHA)
 
+    # One validator, per eye, persists across frames.
+    eye_validator = {
+            "left": EyeValidator(),
+            "right": EyeValidator(),
+    }
+
     for line in sys.stdin:
         try:
             msg = json.loads(line)
@@ -382,7 +458,7 @@ def _main():
         if landmarks is None:
             continue
 
-        eyes = extract_eyes(landmarks, frame_w, frame_h, face.get("blendshapes"), gaze_smoother=gaze_smoother)
+        eyes = extract_eyes(landmarks, frame_w, frame_h, face.get("blendshapes"), gaze_smoother=gaze_smoother, eye_validator=eye_validator)
 
         if eyes is None:
             continue
