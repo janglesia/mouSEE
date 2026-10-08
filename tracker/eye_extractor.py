@@ -326,6 +326,105 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
 
     return out
 
+def extract_feature_vector(eyes, timestamp=None):
+    """
+    Extract normalized eye/iris feature vector for geometric gaze model and calibration.
+
+    Returns a structured result with a fixed-order 6-dimensional feature vector:
+    [left_iris_x, left_iris_y, left_eye_open, right_iris_x, right_iris_y, right_eye_open]
+
+    Naming convention: "left" and "right" refer to the subject's anatomical left/right eye,
+    consistent with the EYES dictionary and MediaPipe's naming. The camera preview is mirrored,
+    but the eye labels remain anatomical.
+
+    Args:
+        eyes: Output from extract_eyes(), containing per-eye geometry data
+        timestamp: Optional frame timestamp or identifier
+
+    Returns:
+        dict with fields:
+            - valid (bool): True if both eyes are usable and features are valid
+            - reason (str, optional): Explanation when valid=False
+            - timestamp: The input timestamp, if provided
+            - features (list[float]): 6-element vector when valid, None otherwise
+            - left (dict, optional): Per-eye breakdown when valid
+            - right (dict, optional): Per-eye breakdown when valid
+    """
+    if eyes is None:
+        return {"valid": False, "reason": "No eye data", "timestamp": timestamp, "features": None}
+
+    # Both eyes must be present and not closed for this initial implementation
+    if "left" not in eyes or "right" not in eyes:
+        return {"valid": False, "reason": "Both eyes required", "timestamp": timestamp, "features": None}
+
+    left_eye = eyes["left"]
+    right_eye = eyes["right"]
+
+    # Check if either eye is closed
+    if left_eye.get("closed", False) or right_eye.get("closed", False):
+        return {"valid": False, "reason": "Eye closed", "timestamp": timestamp, "features": None}
+
+    # Check for missing or non-finite measurements
+    def check_eye_features(eye):
+        required = ["offset", "openness", "width_px"]
+        for key in required:
+            if key not in eye:
+                return False
+        if "h" not in eye["offset"] or "v" not in eye["offset"]:
+            return False
+        # Check for non-finite values
+        h = eye["offset"]["h"]
+        v = eye["offset"]["v"]
+        openness = eye["openness"]
+        width = eye["width_px"]
+        if not all(isinstance(x, (int, float)) for x in [h, v, openness, width]):
+            return False
+        if not all(math.isfinite(x) for x in [h, v, openness, width]):
+            return False
+        if width <= 0:
+            return False
+        return True
+
+    if not check_eye_features(left_eye) or not check_eye_features(right_eye):
+        return {"valid": False, "reason": "Invalid eye measurements", "timestamp": timestamp, "features": None}
+
+    # Extract the feature vector components
+    # iris_x: horizontal offset from eye center, normalized by half eye width (from extract_eyes)
+    # iris_y: vertical offset from eyelid midpoint, normalized by half eye width (from extract_eyes)
+    # eye_open: eyelid separation normalized by eye width (from extract_eyes)
+    left_iris_x = float(left_eye["offset"]["h"])
+    left_iris_y = float(left_eye["offset"]["v"])
+    left_eye_open = float(left_eye["openness"])
+
+    right_iris_x = float(right_eye["offset"]["h"])
+    right_iris_y = float(right_eye["offset"]["v"])
+    right_eye_open = float(right_eye["openness"])
+
+    # Final validation: check eye openness threshold
+    if left_eye_open < CLOSED_OPENNESS or right_eye_open < CLOSED_OPENNESS:
+        return {"valid": False, "reason": "Eye nearly closed", "timestamp": timestamp, "features": None}
+
+    features = [left_iris_x, left_iris_y, left_eye_open,
+                 right_iris_x, right_iris_y, right_eye_open]
+
+    result = {
+        "valid": True,
+        "timestamp": timestamp,
+        "features": features,
+        "left": {
+            "iris_x": left_iris_x,
+            "iris_y": left_iris_y,
+            "eye_open": left_eye_open,
+        },
+        "right": {
+            "iris_x": right_iris_x,
+            "iris_y": right_iris_y,
+            "eye_open": right_eye_open,
+        },
+    }
+
+    return result
+
 def draw_eyes(view, eyes, frame_w):
     if eyes is None:
         return
