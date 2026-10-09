@@ -42,13 +42,15 @@ mouSEE/
     Calibration/, Gaze/, Input/, Settings/, UI/   empty for now, see below
   tracker/             Python face tracking
     face_tracker.py    face tracking script
+    eye_extractor.py   eye/iris extraction and feature vector generation
     requirements.txt   Python packages
     face_landmarker.task   face landmark model (downloaded by make setup)
     .venv/             Python virtual environment (created by make setup, not in git)
   persistence/
     database.py        SQLite schema (users, settings, calibration)
   docs/                setup guide and full command reference
-  tests/               empty for now
+  tests/               automated tests
+    test_eye_extractor.py  eye extractor and feature vector tests
   Makefile             shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
@@ -69,7 +71,6 @@ The empty folders are placeholders for features that haven't been written yet. E
 - `app/Input/`: moving the cursor and clicking (e.g. blink to click)
 - `app/UI/`: settings window, calibration screen, on/off toggle
 - `app/Settings/`: user settings and saving them between runs (`persistence/database.py` has the database schema for this)
-- `tests/`: automated tests
 
 ## Getting started
 
@@ -111,6 +112,12 @@ Camera ready (1920x1080). Press Ctrl+C to stop.
 A camera window also opens, showing the landmarks on your face. Close it with `q` or stop everything with Ctrl+C. The window only updates at 30 fps to save CPU, the fps in the status line is the actual tracking speed.
 
 MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
+
+## Unit tests
+
+Eye extractor and feature vector tests:
+- Run from the project root with: `python -m unittest tests.test_eye_extractor`
+- Tests cover eye extraction, feature vector generation, translation/scale invariance, and edge cases
 
 ## Make commands
 

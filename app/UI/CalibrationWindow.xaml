@@ -1,0 +1,223 @@
+<Window x:Class="app.UI.CalibrationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="mouSEE Calibration"
+        Width="1120"
+        Height="740"
+        MinWidth="900"
+        MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Background="#F2F5F3"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="PrimaryButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="#C65D43" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="20,11" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="#E7EEEA" />
+            <Setter Property="Foreground" Value="#29413C" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="226" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#193630">
+            <Grid Margin="24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel>
+                    <TextBlock Text="mouSEE" Foreground="White" FontSize="25" FontWeight="Bold" />
+                    <TextBlock Text="GAZE TOOLS" Foreground="#9CB7AE" FontSize="10" FontWeight="SemiBold" Margin="1,3,0,0" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Margin="0,54,0,0">
+                    <TextBlock Text="WORKFLOW" Foreground="#8DA99F" FontSize="10" FontWeight="SemiBold" />
+                    <Border Background="#294A42" CornerRadius="4" Padding="12,13" Margin="0,15,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="30" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="01" Foreground="#F2A48E" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Prepare" Foreground="White" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="Position and preview" Foreground="#B5C9C2" FontSize="10" Margin="0,3,0,0" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Margin="12,12,0,15">
+                        <TextBlock Text="02" Foreground="#8DA99F" FontSize="12" FontWeight="Bold" Width="30" />
+                        <TextBlock Text="Target sequence" Foreground="#D0DED9" FontSize="12" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
+                        <TextBlock Text="03" Foreground="#8DA99F" FontSize="12" FontWeight="Bold" Width="30" />
+                        <TextBlock Text="Review" Foreground="#D0DED9" FontSize="12" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2">
+                    <Border Height="1" Background="#36564E" Margin="0,0,0,18" />
+                    <TextBlock Text="UI PREVIEW" Foreground="#F2A48E" FontSize="10" FontWeight="Bold" />
+                    <TextBlock Text="Calibration capture is not connected." Foreground="#C1D1CB" FontSize="11" TextWrapping="Wrap" Margin="0,7,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1" Background="#F2F5F3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="76" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="68" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="White" BorderBrush="#DCE5E0" BorderThickness="0,0,0,1">
+                <Grid Margin="32,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Calibration" Foreground="#20342F" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="PERSONAL SETUP" Foreground="#6C8179" FontSize="10" FontWeight="SemiBold" Margin="0,3,0,0" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="#F8E9E3" CornerRadius="3" Padding="10,6" VerticalAlignment="Center">
+                        <TextBlock Text="PREVIEW MODE" Foreground="#A64A35" FontSize="10" FontWeight="Bold" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="32,24,32,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.45*" />
+                    <ColumnDefinition Width="0.82*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" Margin="0,0,22,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock x:Name="PhaseText" Text="STEP 01  /  PREPARE" Foreground="#B4543D" FontSize="10" FontWeight="Bold" />
+                        <TextBlock x:Name="HeadlineText" Text="Set up your viewing position" Foreground="#20342F" FontSize="25" FontWeight="SemiBold" Margin="0,8,0,0" />
+                        <TextBlock x:Name="DescriptionText" Text="Use the target field to preview the calibration flow. Keep your head comfortably still and centered on screen." Foreground="#647870" FontSize="13" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Background="White" BorderBrush="#DCE5E0" BorderThickness="1" Margin="0,20,0,0">
+                        <Grid Margin="18">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="30" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <TextBlock Text="TARGET FIELD" Foreground="#62776F" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TargetCountText" Text="READY" Foreground="#62776F" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid x:Name="TargetGrid" Grid.Row="1" Margin="12,6,12,12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse x:Name="Target00" Grid.Row="0" Grid.Column="0" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target01" Grid.Row="0" Grid.Column="1" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target02" Grid.Row="0" Grid.Column="2" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target10" Grid.Row="1" Grid.Column="0" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target11" Grid.Row="1" Grid.Column="1" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target12" Grid.Row="1" Grid.Column="2" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target20" Grid.Row="2" Grid.Column="0" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target21" Grid.Row="2" Grid.Column="1" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Ellipse x:Name="Target22" Grid.Row="2" Grid.Column="2" Width="12" Height="12" Fill="#D5DFDA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Image x:Name="ActiveTargetLogo"
+                                        Width="110"
+                                        Height="110"
+                                        Source="/assets/mouSEE-logo.png"
+                                        Stretch="Uniform"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        IsHitTestVisible="False"
+                                        Visibility="Collapsed" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Column="1" Background="#E6EEEA" Padding="23">
+                    <StackPanel>
+                        <TextBlock Text="PREVIEW SEQUENCE" Foreground="#61766E" FontSize="10" FontWeight="Bold" />
+                        <TextBlock x:Name="ProgressCountText" Text="0 / 9" Foreground="#20342F" FontSize="38" FontWeight="SemiBold" Margin="0,13,0,0" />
+                        <ProgressBar x:Name="SequenceProgress" Minimum="0" Maximum="9" Value="0" Height="4" Foreground="#C65D43" Background="#CFDAD5" BorderThickness="0" Margin="0,11,0,0" />
+
+                        <Border Height="1" Background="#CFDAD5" Margin="0,25,0,22" />
+                        <TextBlock Text="CURRENT TARGET" Foreground="#61766E" FontSize="10" FontWeight="Bold" />
+                        <TextBlock x:Name="CurrentTargetText" Text="Waiting to begin" Foreground="#20342F" FontSize="17" FontWeight="SemiBold" Margin="0,8,0,0" />
+                        <TextBlock x:Name="TargetHintText" Text="Start the preview to highlight the first point in the target field." Foreground="#61766E" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
+
+                        <Border Height="1" Background="#CFDAD5" Margin="0,25,0,20" />
+                        <TextBlock Text="BEFORE YOU START" Foreground="#61766E" FontSize="10" FontWeight="Bold" />
+                        <TextBlock Text="Sit at a comfortable distance" Foreground="#304740" FontSize="12" Margin="0,12,0,0" />
+                        <TextBlock Text="Keep your face in the camera frame" Foreground="#304740" FontSize="12" Margin="0,8,0,0" />
+
+                        <Border Background="#F4F7F5" Padding="12" Margin="0,23,0,0">
+                            <TextBlock Text="This preview only moves the on-screen marker. It does not collect or save calibration data." Foreground="#536A61" FontSize="11" TextWrapping="Wrap" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="2" Background="White" BorderBrush="#DCE5E0" BorderThickness="0,1,0,0">
+                <Grid Margin="32,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="UI-only prototype · tracker and calibration service are not connected" Foreground="#71837C" FontSize="11" VerticalAlignment="Center" />
+                    <Button x:Name="PreviousButton" Grid.Column="1" Content="Previous" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" IsEnabled="False" Click="PreviousButton_Click" />
+                    <Button x:Name="NextButton" Grid.Column="2" Content="Begin preview" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="NextButton_Click" />
+                    <Button Grid.Column="3" Content="Close" Style="{StaticResource SecondaryButton}" Click="CloseButton_Click" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

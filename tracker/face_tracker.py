@@ -24,6 +24,8 @@ https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_lan
 
 Run standalone to test:  python face_tracker.py --preview
 """
+from eye_extractor import extract_eyes, draw_eyes, GazeSmoother
+
 import argparse
 import json
 import math
@@ -105,6 +107,8 @@ class Preview(threading.Thread):
                     view[pts[:, 1] + dy, pts[:, 0] + dx] = (0, 255, 0)
                 for x, y in f["irises"].values():
                     cv2.circle(view, (int(x * fw), int(y * fh)), 4, (0, 0, 255), -1)
+                if f.get("eyes"):
+                    draw_eyes(view, f["eyes"], frame.shape[1]) 
                 p = f["pose"]
                 cv2.putText(view, f"yaw {p['yaw']:+.0f}  pitch {p['pitch']:+.0f}  roll {p['roll']:+.0f}",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
@@ -172,6 +176,7 @@ def main():
         preview = Preview()
         preview.start()
 
+    gaze_smoother = GazeSmoother()
     try:
         while preview is None or not preview.closed.is_set():
             ok, frame = cap.read()
@@ -181,6 +186,7 @@ def main():
 
             # VIDEO mode requires strictly increasing timestamps
             ts = int((time.monotonic() - start) * 1000)
+            wall = int(time.time() * 1000)  # Unix ms, for latency measurement in the C# app
             if ts <= last_ts:
                 ts = last_ts + 1
             last_ts = ts
@@ -190,6 +196,8 @@ def main():
             result = landmarker.detect_for_video(
                 mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ts)
 
+            if not result.face_landmarks:
+                gaze_smoother.reset()
             faces = []
             for i, lms in enumerate(result.face_landmarks):
                 pts = [[round(1 - p.x, 4), round(p.y, 4), round(p.z, 4)] for p in lms]
@@ -205,8 +213,9 @@ def main():
                                     for c in result.face_blendshapes[i]
                                     if c.category_name != "_neutral"},
                 }
+                face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"], gaze_smoother=gaze_smoother) 
                 faces.append(face)
-            emit({"type": "frame", "t": ts, "faces": faces})
+            emit({"type": "frame", "t": ts, "wall": wall, "faces": faces})
 
             if preview:
                 preview.show(frame, faces)
