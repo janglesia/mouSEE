@@ -171,6 +171,11 @@ def main():
     start = time.monotonic()
     last_ts = -1
 
+    # used for measuring FPS (different from current FPS which counts incoming frame messages)
+    capture_window_start = time.monotonic()
+    capture_frame_count = 0
+    capture_fps = 0.0
+
     preview = None
     if args.preview:
         preview = Preview()
@@ -184,6 +189,16 @@ def main():
                 emit({"type": "error", "message": "Camera stopped returning frames"})
                 break
 
+            # calculates capture rate over ~1 sec windows
+            capture_frame_count += 1
+            capture_elapsed = time.monotonic() - capture_window_start
+
+            if capture_elapsed >= 1.0:
+                capture_fps = capture_frame_count / capture_elapsed
+                capture_frame_count = 0
+                capture_window_start = time.monotonic()
+
+
             # VIDEO mode requires strictly increasing timestamps
             ts = int((time.monotonic() - start) * 1000)
             wall = int(time.time() * 1000)  # Unix ms, for latency measurement in the C# app
@@ -191,10 +206,12 @@ def main():
                 ts = last_ts + 1
             last_ts = ts
 
-            # detect on the unmirrored frame so left/right eye labels are correct, flip x after
+            # timed detection on the unmirrored frame so left/right eye labels are correct, flip x after
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            landmark_start = time.perf_counter()
             result = landmarker.detect_for_video(
                 mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ts)
+            landmark_ms = (time.perf_counter() - landmark_start) * 1000.0
 
             if not result.face_landmarks:
                 gaze_smoother.reset()
@@ -215,7 +232,7 @@ def main():
                 }
                 face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"], gaze_smoother=gaze_smoother) 
                 faces.append(face)
-            emit({"type": "frame", "t": ts, "wall": wall, "faces": faces})
+            emit({"type": "frame", "t": ts, "wall": wall, "capture_fps": capture_fps, "landmark_ms": landmark_ms, "faces": faces})
 
             if preview:
                 preview.show(frame, faces)

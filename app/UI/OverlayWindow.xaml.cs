@@ -136,7 +136,14 @@ public partial class OverlayWindow : Window
 
     private static string FormatFrame(TrackerMessage msg, double fps, string latency)
     {
-        string header = $"{fps,5:0.0} fps | latency {latency}";
+        //messages FPS: how frequently the C# app receives frame messages.
+        //capture FPS: how frequently the Python tracker successfully reads frames from the camera, measured over approximately one-second windows.
+        //landmark ms: how long MediaPipe's inference call takes for a frame.
+        //latency: existing elapsed time from the Python wall timestamp to the C# app's current time.
+        string header = $"messages {fps,5:0.0} fps | " +
+                        $"capture {msg.CaptureFps,5:0.0} fps | " +
+                        $"landmark {msg.LandmarkMs,6:0.0} ms | " +
+                        $"latency {latency}";
 
         if (msg.Faces is not { Count: > 0 } faces)
             return $"{header}\nno face";

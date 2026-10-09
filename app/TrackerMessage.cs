@@ -3,7 +3,9 @@ using System.Text.Json.Serialization;
 namespace app;
 
 // JSON messages from the tracker
-public record TrackerMessage(string Type, long T, List<Face>? Faces, string? Message, int Width, int Height, long Wall = 0);
+public record TrackerMessage(string Type, long T, List<Face>? Faces, string? Message, int Width, int Height, long Wall = 0,
+	[property: JsonPropertyName("capture_fps")] double CaptureFps = 0,
+    [property: JsonPropertyName("landmark_ms")] double LandmarkMs = 0);
 public record Face(double[] Box, double[][] Landmarks, Irises Irises, Pose Pose,
 				   Dictionary<string, double> Blendshapes, Eyes? Eyes = null);
 public record Irises(double[] Left, double[] Right);
