@@ -9,7 +9,7 @@ Right now it only does tracking: 60 times a second it finds 478 points on your f
 There are two programs:
 
 - `tracker/` is a Python script that reads the webcam and tracks your face and eyes using Google's MediaPipe Face Landmarker.
-- `app/` is a C# console app. It starts the tracker in the background and reads what it finds.
+- `app/` is a C# Windows app (WPF). It starts the tracker in the background, reads what it finds, and shows it in an overlay. It also has the calibration screen.
 
 The tracker prints one line of JSON per frame and the app reads those lines. Python is used for the vision part because that's where the good libraries are. C# is used for the app because it's easier to do Windows things in (moving the cursor, settings window, etc.).
 
@@ -36,40 +36,54 @@ OpenCV, MediaPipe and scikit-learn get installed by `make setup`, you don't need
 
 ```
 mouSEE/
-  app/                 C# app
-    mouSEE.csproj      .NET project file
-    Program.cs         the app
-    Calibration/, Gaze/, Input/, Settings/, UI/   empty for now, see below
-  tracker/             Python face tracking
-    face_tracker.py    face tracking script
-    eye_extractor.py   eye/iris extraction and feature vector generation
-    requirements.txt   Python packages
-    face_landmarker.task   face landmark model (downloaded by make setup)
-    .venv/             Python virtual environment (created by make setup, not in git)
+  app/                       C# app (WPF)
+    mouSEE.csproj            .NET project file
+    App.xaml, App.xaml.cs    starts the app and opens the overlay (or the calibration window)
+    TrackerClient.cs         starts the Python tracker and reads its messages
+    TrackerMessage.cs        the shape of the tracker's JSON messages
+    UI/
+      OverlayWindow.xaml(.cs)      readout in the bottom left corner of the screen
+      CalibrationWindow.xaml(.cs)  nine-point calibration screen (UI only so far)
+    Calibration/
+      CalibrationTarget.cs   one calibration point and its position on screen
+    assets/mouSEE-logo.png   logo, used as the calibration target
+    Gaze/, Input/, Settings/   empty for now, see below
+  tracker/                   Python face tracking
+    face_tracker.py          reads the webcam, finds the face, sends results to the app
+    eye_extractor.py         eye measurements, open/closed and winks, glitch filter, feature vectors
+    requirements.txt         Python packages
+    face_landmarker.task     face landmark model (downloaded by make setup)
+    .venv/                   Python virtual environment (created by make setup, not in git)
   persistence/
-    database.py        SQLite schema (users, settings, calibration)
-  docs/                setup guide and full command reference
-  tests/               automated tests
-    test_eye_extractor.py  eye extractor and feature vector tests
-  Makefile             shortcuts for setup, building and running (make setup, make run, ...)
+    database.py              SQLite schema (users, settings, calibration)
+  docs/                      setup guide, command reference, UI notes
+  tests/
+    test_eye_extractor.py    tests for eye_extractor.py
+  Makefile                   shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
-**Program.cs** finds `../tracker`, starts `face_tracker.py` (using `tracker/.venv` if it exists), reads its output and shows a status line with fps, head angle, iris positions and blinks. Ctrl+C stops both.
+**App.xaml.cs** starts the app. Normally it opens the overlay; with `--calibration-preview` it opens the calibration window instead.
+
+**TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes the app's command line options on to it, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
+
+**OverlayWindow** is a small always-on-top readout in the bottom left corner (fps, head angle, irises, blinks, gaze). Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app.
+
+**CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/calibration.txt`.
 
 **face_tracker.py** opens the webcam at 1920x1080 / 60 fps (or the closest thing the camera supports), runs MediaPipe Face Landmarker on every frame and prints the results. Coordinates are mirrored like a selfie camera, but "left eye" always means your actual left eye. With `--preview` it also opens a window showing what it sees. The comment at the top of the file describes the output format.
 
+**eye_extractor.py** works out, for each eye, where the iris is within the eye, how open the eye is and whether it's closed (winks included), and combines both eyes into one gaze value. `EyeValidator` throws away frames where an eye suddenly jumps (MediaPipe glitches). It also builds the feature vectors that calibration will use.
+
 **face_landmarker.task** is a pretrained model from Google (about 4 MB). It finds 478 face points, including 10 for the irises, plus head rotation and 51 expression scores ("blendshapes") like `eyeBlinkLeft` or `jawOpen`. [Map of the point numbers](https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png).
 
-**mouSEE.csproj** targets .NET 10. If you have .NET 8 instead, change `net10.0` to `net8.0`.
+**mouSEE.csproj** targets .NET 10 on Windows (WPF). If you have .NET 8 instead, change `net10.0-windows` to `net8.0-windows`.
 
 **Makefile** has shortcuts so you don't have to remember the individual commands. See [Make commands](#make-commands).
 
 The empty folders are placeholders for features that haven't been written yet. Each has a `.gitkeep` file so git keeps the folder; delete it once real files go in.
 
 - `app/Gaze/`: turning iris positions and head angle into a point on the screen
-- `app/Calibration/`: looking at dots on screen so the program learns your eye range
 - `app/Input/`: moving the cursor and clicking (e.g. blink to click)
-- `app/UI/`: settings window, calibration screen, on/off toggle
 - `app/Settings/`: user settings and saving them between runs (`persistence/database.py` has the database schema for this)
 
 ## Getting started
@@ -92,7 +106,9 @@ The commands in this README are for Git Bash.
 make tracker
 ```
 
-You should see a window with a mesh of green dots over your face, red dots on your irises, and your head angle in the top left. The terminal will fill up with JSON lines. Press `q` in the window to quit.
+You should see a window with a mesh of green dots over your face, red dots on your irises, outlines around your eyes with an `OPEN` / `CLOSED` label, and your head angle and gaze in the top left. The terminal will fill up with JSON lines. Press `q` in the window to quit.
+
+MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
 
 ### Full app
 
@@ -100,24 +116,44 @@ You should see a window with a mesh of green dots over your face, red dots on yo
 make run
 ```
 
-You should get something like:
+An overlay shows up in the bottom left corner of the screen, something like:
 
 ```
-Camera ready (1920x1080). Press Ctrl+C to stop.
- 56.4 fps | yaw   -3 pitch   -5 roll    1 | iris L (0.455, 0.385) R (0.550, 0.381) | blink L 0.18 R 0.13
+messages  60.0 fps | capture  60.0 fps | landmark   11.8 ms | latency 25 ms
+yaw    -3  pitch    -5  roll     1
+iris L (0.455, 0.385)
+iris R (0.550, 0.381)
+blink L 0.18  R 0.13
+gaze h +0.012  v -0.034  center
 ```
 
-`yaw` / `pitch` / `roll` are your head angle in degrees (0 when facing the camera). `iris` is where each iris is in the image, from (0, 0) top left to (1, 1) bottom right. `blink` goes from 0 (open) to 1 (closed). Everything should change as you move. Ctrl+C to stop.
+- `messages` is how many updates per second the app gets from the tracker (the actual tracking speed), `capture` is how fast the camera delivers frames, `landmark` is how long MediaPipe takes per frame, and `latency` is the time from the camera frame to the app.
+- `yaw` / `pitch` / `roll` are your head angle in degrees (0 when facing the camera).
+- `iris` is where each iris is in the image, from (0, 0) top left to (1, 1) bottom right.
+- `blink` goes from 0 (open) to 1 (closed).
+- `gaze` is where you're looking within your eyes, roughly -1 to +1 each way, plus a rough direction.
 
-A camera window also opens, showing the landmarks on your face. Close it with `q` or stop everything with Ctrl+C. The window only updates at 30 fps to save CPU, the fps in the status line is the actual tracking speed.
+Everything should change as you move. A camera window also opens, showing the landmarks on your face. It only updates at 30 fps to save CPU, the overlay shows the actual tracking speed.
 
-MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
+To quit, press **Ctrl+Alt+Q**. Pressing `q` in the camera window only stops the tracker, the overlay then says "Tracker exited" and stays open until Ctrl+Alt+Q.
+
+### Calibration screen
+
+```bash
+make run ARGS="--calibration-preview"
+```
+
+Opens the nine-point calibration screen instead of the overlay. It's only a walkthrough of the screens for now and doesn't record anything. Close it with its close button.
 
 ## Unit tests
 
-Eye extractor and feature vector tests:
-- Run from the project root with: `python -m unittest tests.test_eye_extractor`
-- Tests cover eye extraction, feature vector generation, translation/scale invariance, and edge cases
+Eye extractor tests, run from the project folder:
+
+```bash
+tracker/.venv/Scripts/python -m unittest tests.test_eye_extractor -v
+```
+
+Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases.
 
 ## Make commands
 
@@ -145,7 +181,7 @@ make run 1080       # 1920x1080
 make tracker 720
 ```
 
-Which frame rate you get depends on the camera. Many webcams only do 30 fps at 480 but 60 fps at the others; the status line shows what you're actually getting. Lower resolutions use less CPU, but the face and eyes are made of fewer pixels, so tracking gets less precise further from the camera.
+Which frame rate you get depends on the camera. Many webcams only do 30 fps at 480 but 60 fps at the others; the overlay shows what you're actually getting. Lower resolutions use less CPU, but the face and eyes are made of fewer pixels, so tracking gets less precise further from the camera.
 
 ### Other options
 
@@ -175,7 +211,7 @@ Want to run things by hand, or use tracker options like `--min-confidence`? See 
 
 - **Could not open camera 0**: something else is using the webcam (Zoom, Teams, a browser tab). Close it, or if you have more than one camera, see [Switching cameras](#switching-cameras).
 - **Model not found**: `face_landmarker.task` isn't in `tracker/`. Run `make setup`.
-- **Can't find tracker**: you ran `dotnet run` from the wrong folder. Use `make run`, or `cd app` first.
+- **Can't find tracker/face_tracker.py**: the app looks for a `tracker` folder next to or above where it runs. This only happens if the app was copied somewhere outside the project. Use `make run`.
 - **`make reset` fails to delete files**: the app or tracker is still running. Stop it and try again.
 - **Low fps**: try a lower resolution, e.g. `make run 720`. Webcams also drop frame rate in dark rooms.
 - **No face detected**: check lighting, stay within ~2 m, or try `--min-confidence 0.3`.

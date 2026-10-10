@@ -24,7 +24,7 @@ https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_lan
 
 Run standalone to test:  python face_tracker.py --preview
 """
-from eye_extractor import extract_eyes, draw_eyes, GazeSmoother
+from eye_extractor import extract_eyes, draw_eyes, GazeSmoother, EyeValidator
 
 import argparse
 import json
@@ -182,6 +182,8 @@ def main():
         preview.start()
 
     gaze_smoother = GazeSmoother()
+    # one per eye, they remember the last good eye to catch one-frame glitches
+    eye_validator = {"left": EyeValidator(), "right": EyeValidator()}
     try:
         while preview is None or not preview.closed.is_set():
             ok, frame = cap.read()
@@ -215,6 +217,8 @@ def main():
 
             if not result.face_landmarks:
                 gaze_smoother.reset()
+                eye_validator["left"].reset()
+                eye_validator["right"].reset()
             faces = []
             for i, lms in enumerate(result.face_landmarks):
                 pts = [[round(1 - p.x, 4), round(p.y, 4), round(p.z, 4)] for p in lms]
@@ -230,7 +234,8 @@ def main():
                                     for c in result.face_blendshapes[i]
                                     if c.category_name != "_neutral"},
                 }
-                face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"], gaze_smoother=gaze_smoother) 
+                face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"],
+                                            gaze_smoother=gaze_smoother, eye_validator=eye_validator)
                 faces.append(face)
             emit({"type": "frame", "t": ts, "wall": wall, "capture_fps": capture_fps, "landmark_ms": landmark_ms, "faces": faces})
 

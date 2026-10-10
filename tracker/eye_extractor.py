@@ -32,6 +32,13 @@ CLOSED_BLINK = 0.5
 # This is a normalized eyelid-gap / eye-width ratio.
 CLOSED_OPENNESS = 0.15
 
+# Winks (one eye closed). MediaPipe links the eyes, so for a wink the blink score only reaches
+# ~0.2-0.35 and the lid points stay ~2/3 open. Compare the eyes to each other instead:
+# closed if this eye is less than WINK_OPENNESS_RATIO as open as the other one AND its blink
+# score is WINK_BLINK_DIFF higher. Tuned on a recording: winks 100% detected, open eyes 0%.
+WINK_OPENNESS_RATIO = 0.8
+WINK_BLINK_DIFF = 0.08
+
 # Debugging, will probably change as needed
 H_THRESH = 0.12
 V_THRESH = 0.08
@@ -45,6 +52,8 @@ MAX_EYE_WIDTH_JUMP = 0.35
 MAX_GAZE_JUMP_H = 0.75
 MAX_GAZE_JUMP_V = 0.75
 MIN_IRIS_DIAMETER_PX = 3.0
+# a jump that lasts this many frames in a row is real movement (e.g. leaning in), not a glitch
+MAX_REJECTIONS = 5
 
 def _r(x, n=4):
     return round(float(x), n)
@@ -84,11 +93,17 @@ class GazeSmoother:
 class EyeValidator:
     def __init__(self):
         self.prev_eye = None
+        self.rejections = 0  # rejected frames in a row
 
     def reset(self):
         self.prev_eye = None
+        self.rejections = 0
 
     def is_valid(self, eye):
+        # check that the iris diameter is a reasonable size. applies to every frame, even the first
+        if eye["iris"]["diameter_px"] < MIN_IRIS_DIAMETER_PX:
+            return False
+
         # Accept the first valid eye as the reference.
         if self.prev_eye is None:
             return True
@@ -102,6 +117,10 @@ class EyeValidator:
         if width_jump > MAX_EYE_WIDTH_JUMP:
             return False
 
+        # iris position is meaningless while the lid covers it, so skip the gaze check for closed eyes
+        if eye["closed"]:
+            return True
+
         # Check that gaze direction does not jump unreasonably far from previous frame
         gaze_jump_h = abs(eye["offset"]["h"] - prev_eye["offset"]["h"])
         gaze_jump_v = abs(eye["offset"]["v"] - prev_eye["offset"]["v"])
@@ -110,21 +129,25 @@ class EyeValidator:
         if gaze_jump_h > MAX_GAZE_JUMP_H or gaze_jump_v > MAX_GAZE_JUMP_V:
             return False
 
-        # check that the iris diameter is a reasonable size
-        iris_px = eye["iris"]["diameter_px"]
-        # if not, reject the new eye data
-        if iris_px < MIN_IRIS_DIAMETER_PX:
-            return False
-
         # if it surpasses all checks, return true
         return True
 
-    # update the current eye as new reference
+    # returns True if the eye should be used. accepted open eyes become the new reference
     def update(self, eye):
-        if self.is_valid(eye):
+        # comparing against an old reference forever would lock the eye out after a real change
+        # (leaning closer makes the eye wider), so after enough rejections in a row start over
+        if self.rejections >= MAX_REJECTIONS:
+            self.reset()
+
+        if not self.is_valid(eye):
+            self.rejections += 1
+            return False
+
+        self.rejections = 0
+        # don't use a closed eye as the reference, after a blink compare to the eye from before it
+        if not eye["closed"]:
             self.prev_eye = eye
-            return True
-        return False
+        return True
 
 def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None, eye_validator=None):
     if landmarks is None:
@@ -250,13 +273,29 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
                 "closed": bool(closed),
             }
 
-            # eye validator call
-            if not eye_validator[name].update(out[name]):
-                continue
-
         # skip this eye and only use the other eye if something goes wrong
         except(IndexError, TypeError, ValueError):
             continue
+
+    # winks need both eyes measured before deciding, see WINK_OPENNESS_RATIO
+    if "left" in out and "right" in out:
+        for name, other in (("left", "right"), ("right", "left")):
+            eye, other_eye = out[name], out[other]
+            if eye["closed"]:
+                continue
+            less_open = eye["openness"] < WINK_OPENNESS_RATIO * other_eye["openness"]
+            # without blendshapes only the openness can be compared
+            blink_higher = (eye["blink"] is None or other_eye["blink"] is None
+                            or eye["blink"] - other_eye["blink"] > WINK_BLINK_DIFF)
+            if less_open and blink_higher:
+                eye["closed"] = True
+
+    # eye validator call, drop the eye if it looks like a glitch.
+    # after the wink check because the validator treats closed eyes differently
+    if eye_validator is not None:
+        for name in ("left", "right"):
+            if name in out and not eye_validator[name].update(out[name]):
+                del out[name]
 
     # if both eyes are causing problems, return None
     if not out:
@@ -531,6 +570,8 @@ def _main():
 
             # New stream -> reset smoothing.
             gaze_smoother.reset()
+            eye_validator["left"].reset()
+            eye_validator["right"].reset()
             continue
 
         if msg.get("type") == "error":
@@ -547,6 +588,8 @@ def _main():
 
         if not faces:
             gaze_smoother.reset()
+            eye_validator["left"].reset()
+            eye_validator["right"].reset()
             continue
 
         # For now we track the first detected face.
