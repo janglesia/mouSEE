@@ -2,6 +2,9 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Threading;
+using app.Gaze;
 
 namespace app.UI;
 
@@ -31,6 +34,13 @@ public partial class OverlayWindow : Window
     private int _framesInWindow;
     private double _fps;
 
+    // ---- Tracking status bar ----
+    private readonly TrackingMonitor _monitor = new();
+    // frames stopping can't be noticed from OnMessage, so check on a timer
+    private readonly DispatcherTimer _timeoutTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private static readonly Brush Green = Frozen("#2E7D32"), Orange = Frozen("#EF6C00"),
+                                  Red = Frozen("#C62828"), Grey = Frozen("#616161");
+
     public OverlayWindow()
     {
         InitializeComponent();
@@ -38,9 +48,13 @@ public partial class OverlayWindow : Window
         // text height changes (e.g. "no face" vs. full readout), so keep the bottom edge pinned
         SizeChanged += (_, _) => PositionBottomLeft();
 
+        _monitor.Changed += UpdateStatusBar;
+        _timeoutTimer.Tick += (_, _) => _monitor.CheckTimeout();
+
         Loaded += async (_, _) =>
         {
             PositionBottomLeft();
+            _timeoutTimer.Start();
             _tracker.MessageReceived += OnMessage;
             _tracker.LogReceived += OnLog;
             _tracker.Failed += OnFailed;
@@ -50,6 +64,7 @@ public partial class OverlayWindow : Window
 
         Closed += (_, _) =>
         {
+            _timeoutTimer.Stop();
             _tracker.MessageReceived -= OnMessage;
             _tracker.LogReceived -= OnLog;
             _tracker.Failed -= OnFailed;
@@ -91,7 +106,11 @@ public partial class OverlayWindow : Window
     // ---- Tracker events ----
     private void OnLog(string line) => Debug.WriteLine($"[tracker] {line}"); // may be a background thread
 
-    private void OnFailed(string reason) => DebugText.Text = reason;
+    private void OnFailed(string reason)
+    {
+        DebugText.Text = reason;
+        _monitor.OnTrackerStopped(reason);
+    }
 
     private void OnMessage(TrackerMessage msg)
     {
@@ -103,9 +122,12 @@ public partial class OverlayWindow : Window
 
             case "error":
                 DebugText.Text = $"Tracker error:\n{msg.Message}";
+                // e.g. the camera can't be opened. the tracker exits right after
+                _monitor.OnTrackerStopped(msg.Message ?? "error");
                 break;
 
             case "frame":
+                _monitor.OnFrame(msg.Tracking);
                 _framesInWindow++;
                 long now = _clock.ElapsedMilliseconds;
                 if (now - _fpsWindowStartMs >= 1000)
@@ -123,6 +145,30 @@ public partial class OverlayWindow : Window
                 }
                 break;
         }
+    }
+
+    private void UpdateStatusBar()
+    {
+        var (headline, hint) = TrackingMonitor.Describe(_monitor.State, _monitor.Reason);
+        StatusHeadline.Text = headline;
+        StatusHint.Text = hint;
+        StatusHint.Visibility = hint == "" ? Visibility.Collapsed : Visibility.Visible;
+        StatusBar.Background = _monitor.State switch
+        {
+            TrackingState.Tracking or TrackingState.Uncertain => Green,
+            TrackingState.Starting => Grey,
+            // closed eyes aren't an error, just nothing to track
+            TrackingState.Recovering => Orange,
+            TrackingState.Lost when _monitor.Reason == "eyes_closed" => Orange,
+            _ => Red,
+        };
+    }
+
+    private static Brush Frozen(string hex)
+    {
+        var brush = (Brush)new BrushConverter().ConvertFromString(hex)!;
+        brush.Freeze();
+        return brush;
     }
 
     // "wall" is Unix ms stamped by the tracker right after it reads the camera frame.

@@ -2,7 +2,10 @@ import unittest
 
 import numpy as np
 
-from tracker.eye_extractor import extract_eyes, extract_feature_vector, EyeValidator, MAX_REJECTIONS
+import cv2
+
+from tracker.eye_extractor import (extract_eyes, extract_feature_vector, eye_contrast, iris_ratio, EyeValidator,
+                                   MAX_REJECTIONS, COVERED_CONTRAST, IRIS_HIDDEN_RATIO)
 
 
 RIGHT_EYE = {
@@ -319,6 +322,133 @@ class WinkTest(unittest.TestCase):
 
         self.assertIn("left", eyes)
         self.assertTrue(eyes["left"]["closed"])
+
+
+SIZE = 1000
+EYE_CENTERS = {"left": (0.35, 0.5), "right": (0.65, 0.5)}  # mirrored, like the landmarks
+
+
+# build_face only sets the points the measurements use, the covered check also needs the outline
+def face_with_outlines(**face_args):
+    landmarks = build_face(**face_args)
+    for name, eye in (("left", LEFT_EYE), ("right", RIGHT_EYE)):
+        cx, cy = EYE_CENTERS[name]
+        n = len(eye["outline"])
+        for k, idx in enumerate(eye["outline"]):
+            angle = 2 * np.pi * k / n
+            landmarks[idx] = (cx + 0.12 * np.cos(angle), cy + 0.06 * np.sin(angle))
+    return landmarks
+
+
+# fake camera frame (not mirrored, like the real one): an open eye is a white eye with a dark
+# iris, a covered eye is the same flat skin colour as the rest of the face, a closed eye is skin
+# with a dark lash line across it (so it isn't flat like a covered one, but has no iris)
+def make_image(covered=(), closed=()):
+    image = np.full((SIZE, SIZE, 3), 130, np.uint8)
+    for name, (cx, cy) in EYE_CENTERS.items():
+        center = (int((1 - cx) * SIZE), int(cy * SIZE))
+        if name in covered:
+            continue
+        if name in closed:
+            cv2.line(image, (center[0] - 110, center[1]), (center[0] + 110, center[1]), (30, 30, 30), 10)
+            continue
+        cv2.ellipse(image, center, (120, 60), 0, 0, 360, (220, 220, 220), -1)
+        cv2.circle(image, center, 40, (30, 30, 30), -1)
+    return image
+
+
+class CoveredEyeTest(unittest.TestCase):
+    def run_frame(self, covered=(), blendshapes=OPEN):
+        return extract_eyes(face_with_outlines(), SIZE, SIZE, blendshapes, image=make_image(covered))
+
+    def test_eye_contrast(self):
+        outline = np.array([[300, 450], [400, 450], [400, 550], [300, 550]], np.int32)
+        flat = np.full((SIZE, SIZE, 3), 130, np.uint8)
+        self.assertLess(eye_contrast(flat, outline), COVERED_CONTRAST)
+
+        eye = flat.copy()
+        cv2.circle(eye, (350, 500), 30, (30, 30, 30), -1)
+        self.assertGreater(eye_contrast(eye, outline), COVERED_CONTRAST)
+
+    def test_open_eyes_are_not_covered(self):
+        eyes = self.run_frame()
+
+        self.assertFalse(eyes["left"]["covered"])
+        self.assertFalse(eyes["right"]["covered"])
+        self.assertGreater(eyes["left"]["contrast"], COVERED_CONTRAST)
+        self.assertEqual(eyes["gaze"]["eyes_used"], 2)
+
+    # also checks the mirroring: covering the left eye must flag the left eye, not the right
+    def test_covered_eye_is_flagged_and_not_used_for_gaze(self):
+        eyes = self.run_frame(covered=("left",))
+
+        self.assertTrue(eyes["left"]["covered"])
+        self.assertFalse(eyes["right"]["covered"])
+        self.assertEqual(eyes["gaze"]["eyes_used"], 1)
+
+    def test_both_covered(self):
+        eyes = self.run_frame(covered=("left", "right"))
+
+        self.assertEqual(eyes["gaze"]["eyes_used"], 0)
+        self.assertEqual(eyes["gaze"]["direction"], "covered")
+
+    # a hand pressing on the lid can push the blink score up, that must not count as a wink
+    def test_covered_eye_is_never_closed(self):
+        eyes = self.run_frame(covered=("left",), blendshapes={"eyeBlinkLeft": 0.9, "eyeBlinkRight": 0.05})
+
+        self.assertTrue(eyes["left"]["covered"])
+        self.assertFalse(eyes["left"]["closed"])
+
+    def test_without_image_nothing_is_covered(self):
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, OPEN)
+
+        self.assertFalse(eyes["left"]["covered"])
+        self.assertIsNone(eyes["left"]["contrast"])
+
+    def test_iris_ratio(self):
+        outline = np.array([[250, 450], [450, 450], [450, 550], [250, 550]], np.int32)
+        eye = np.full((SIZE, SIZE, 3), 220, np.uint8)
+        cv2.circle(eye, (350, 500), 40, (30, 30, 30), -1)
+        self.assertLess(iris_ratio(eye, outline, (350, 500), 40), IRIS_HIDDEN_RATIO)
+
+        lid = np.full((SIZE, SIZE, 3), 130, np.uint8)
+        self.assertGreater(iris_ratio(lid, outline, (350, 500), 40), IRIS_HIDDEN_RATIO)
+
+    def test_closed_eye_from_image_is_closed_not_covered(self):
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, OPEN, image=make_image(closed=("left",)))
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertFalse(eyes["left"]["covered"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    # the head-tilt bug: tilting up gives the open eye a high blink score too, so the scores
+    # say nothing. the image still shows which eye has no iris
+    def test_wink_with_head_tilted_up(self):
+        tilted = {"eyeBlinkLeft": 0.37, "eyeBlinkRight": 0.38}
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, tilted, image=make_image(closed=("left",)))
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    # the image wins over the blink score in the other direction too
+    def test_visible_iris_is_open_despite_high_blink_score(self):
+        eyes = self.run_frame(blendshapes={"eyeBlinkLeft": 0.7, "eyeBlinkRight": 0.7})
+
+        self.assertFalse(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    # the wink rule only runs without an image, here the eye shapes say "wink" but both irises are visible
+    def test_wink_rule_skipped_when_image_shows_iris(self):
+        eyes = extract_eyes(face_with_outlines(left_height=0.05), SIZE, SIZE,
+                            {"eyeBlinkLeft": 0.25, "eyeBlinkRight": 0.05}, image=make_image())
+
+        self.assertFalse(eyes["left"]["closed"])
+
+    def test_feature_vector_rejects_covered_eye(self):
+        result = extract_feature_vector(self.run_frame(covered=("right",)))
+
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["reason"], "Eye covered")
 
 
 class FeatureVectorTest(unittest.TestCase):

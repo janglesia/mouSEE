@@ -46,11 +46,14 @@ mouSEE/
       CalibrationWindow.xaml(.cs)  nine-point calibration screen (UI only so far)
     Calibration/
       CalibrationTarget.cs   one calibration point and its position on screen
+    Gaze/
+      TrackingMonitor.cs     decides when tracking counts as lost, and what to tell the user
     assets/mouSEE-logo.png   logo, used as the calibration target
-    Gaze/, Input/, Settings/   empty for now, see below
+    Input/, Settings/        empty for now, see below
   tracker/                   Python face tracking
     face_tracker.py          reads the webcam, finds the face, sends results to the app
     eye_extractor.py         eye measurements, open/closed and winks, glitch filter, feature vectors
+    tracking_status.py       per frame: is tracking ok, eyes closed, or lost (and why)
     requirements.txt         Python packages
     face_landmarker.task     face landmark model (downloaded by make setup)
     .venv/                   Python virtual environment (created by make setup, not in git)
@@ -59,6 +62,7 @@ mouSEE/
   docs/                      setup guide, command reference, UI notes
   tests/
     test_eye_extractor.py    tests for eye_extractor.py
+    test_tracking_status.py  tests for tracking_status.py
   Makefile                   shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
@@ -66,13 +70,17 @@ mouSEE/
 
 **TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes the app's command line options on to it, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
 
-**OverlayWindow** is a small always-on-top readout in the bottom left corner (fps, head angle, irises, blinks, gaze). Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app.
+**OverlayWindow** is a small always-on-top readout in the bottom left corner: a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app.
+
+**TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything. `CanMoveCursor` is what the cursor code should check later.
 
 **CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/calibration.txt`.
 
 **face_tracker.py** opens the webcam at 1920x1080 / 60 fps (or the closest thing the camera supports), runs MediaPipe Face Landmarker on every frame and prints the results. Coordinates are mirrored like a selfie camera, but "left eye" always means your actual left eye. With `--preview` it also opens a window showing what it sees. The comment at the top of the file describes the output format.
 
-**eye_extractor.py** works out, for each eye, where the iris is within the eye, how open the eye is and whether it's closed (winks included), and combines both eyes into one gaze value. `EyeValidator` throws away frames where an eye suddenly jumps (MediaPipe glitches). It also builds the feature vectors that calibration will use.
+**eye_extractor.py** works out, for each eye, where the iris is within the eye, how open the eye is, whether it's closed (winks included) or covered by something like a hand (both checked in the camera image: is the dark iris visible, and is there any contrast at all), and combines the usable eyes into one gaze value. `EyeValidator` throws away frames where an eye suddenly jumps (MediaPipe glitches). It also builds the feature vectors that calibration will use.
+
+**tracking_status.py** labels every frame `ok`, `eyes_closed` or `lost`, and for `lost` says why: no face, face cut off at the edge, head turned too far, eyes not found, too far from the camera, or eyes covered. It only looks at one frame at a time; deciding when a problem has lasted long enough to count is left to the app, so a blink doesn't count as losing tracking.
 
 **face_landmarker.task** is a pretrained model from Google (about 4 MB). It finds 478 face points, including 10 for the irises, plus head rotation and 51 expression scores ("blendshapes") like `eyeBlinkLeft` or `jawOpen`. [Map of the point numbers](https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png).
 
@@ -82,7 +90,6 @@ mouSEE/
 
 The empty folders are placeholders for features that haven't been written yet. Each has a `.gitkeep` file so git keeps the folder; delete it once real files go in.
 
-- `app/Gaze/`: turning iris positions and head angle into a point on the screen
 - `app/Input/`: moving the cursor and clicking (e.g. blink to click)
 - `app/Settings/`: user settings and saving them between runs (`persistence/database.py` has the database schema for this)
 
@@ -106,7 +113,7 @@ The commands in this README are for Git Bash.
 make tracker
 ```
 
-You should see a window with a mesh of green dots over your face, red dots on your irises, outlines around your eyes with an `OPEN` / `CLOSED` label, and your head angle and gaze in the top left. The terminal will fill up with JSON lines. Press `q` in the window to quit.
+You should see a window with a mesh of green dots over your face, red dots on your irises, outlines around your eyes with an `OPEN` / `CLOSED` / `COVERED` label, and your head angle and gaze in the top left. The bottom left shows the tracking status: green `OK`, orange `EYES_CLOSED`, or red `LOST` with the reason. Try turning your head, moving out of the picture, leaning far back or covering your eyes to see it change. The terminal will fill up with JSON lines. Press `q` in the window to quit.
 
 MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
 
@@ -116,7 +123,18 @@ MediaPipe prints some `INFO` / `WARNING` lines on startup. These are fine.
 make run
 ```
 
-An overlay shows up in the bottom left corner of the screen, something like:
+An overlay shows up in the bottom left corner of the screen. The coloured bar at the top tells you whether tracking is working, and if not, what's wrong and what to do:
+
+| Colour | Means | Examples |
+|--------|-------|----------|
+| Green | Tracking | |
+| Orange | Hold on | "Face found, hold still for a moment", "Eyes closed" |
+| Red | Something's wrong | "Can't see your face, sit in front of the camera", "Head turned too far, face the screen", "Eyes are covered", "Tracker not responding" |
+| Grey | Starting up | "Starting camera..." |
+
+Short problems like a blink or a one-frame glitch don't show up: something has to be wrong for half a second before the bar turns red, and after a problem it waits for a moment of good tracking before going green again. The rules are in `app/Gaze/TrackingMonitor.cs`.
+
+Below the bar is the raw readout, something like:
 
 ```
 messages  60.0 fps | capture  60.0 fps | landmark   11.8 ms | latency 25 ms
@@ -147,13 +165,13 @@ Opens the nine-point calibration screen instead of the overlay. It's only a walk
 
 ## Unit tests
 
-Eye extractor tests, run from the project folder:
+Run from the project folder:
 
 ```bash
-tracker/.venv/Scripts/python -m unittest tests.test_eye_extractor -v
+tracker/.venv/Scripts/python -m unittest tests.test_eye_extractor tests.test_tracking_status -v
 ```
 
-Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases.
+Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases. `test_tracking_status` checks each ok / eyes_closed / lost case.
 
 ## Make commands
 

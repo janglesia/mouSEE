@@ -10,12 +10,30 @@
         ResizeMode="NoResize"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual">
-    <Border Background="#99000000" CornerRadius="4" Padding="8">
-        <TextBlock x:Name="DebugText"
-                   Text="Starting tracker..."
-                   Foreground="Lime"
-                   FontFamily="Consolas"
-                   FontSize="14"
-                   MinWidth="360"/>
-    </Border>
+    <StackPanel>
+        <!-- what the user needs to know: is tracking working, and if not, what to do. colour set in code -->
+        <Border x:Name="StatusBar" Background="#616161" CornerRadius="4" Padding="10,6" Margin="0,0,0,4">
+            <StackPanel>
+                <TextBlock x:Name="StatusHeadline"
+                           Text="Starting camera..."
+                           Foreground="White"
+                           FontFamily="Segoe UI"
+                           FontSize="18"
+                           FontWeight="SemiBold"/>
+                <TextBlock x:Name="StatusHint"
+                           Text="This can take a few seconds"
+                           Foreground="White"
+                           FontFamily="Segoe UI"
+                           FontSize="13"/>
+            </StackPanel>
+        </Border>
+        <Border Background="#99000000" CornerRadius="4" Padding="8">
+            <TextBlock x:Name="DebugText"
+                       Text="Starting tracker..."
+                       Foreground="Lime"
+                       FontFamily="Consolas"
+                       FontSize="14"
+                       MinWidth="360"/>
+        </Border>
+    </StackPanel>
 </Window>
