@@ -16,7 +16,8 @@ Returns {"state": ..., "reason": ...}:
     eyes_covered     no open eye left and at least one is covered (hand, hair...)
 """
 
-# starting guesses, adjust once we have more recordings
+# starting guesses, adjust once we have more recordings.
+# MAX_YAW / MAX_PITCH should be per person (relative to their resting head angle), see docs/eye-calibration.md
 EDGE_MARGIN = 0.01          # face box this close to the image edge counts as cut off (0-1)
 MAX_YAW = 35.0              # degrees, turning left/right
 MAX_PITCH = 30.0            # degrees, looking up/down. resting pitch is often -10 with the camera on top of the screen

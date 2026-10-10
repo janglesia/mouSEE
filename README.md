@@ -59,7 +59,7 @@ mouSEE/
     .venv/                   Python virtual environment (created by make setup, not in git)
   persistence/
     database.py              SQLite schema (users, settings, calibration)
-  docs/                      setup guide, command reference, UI notes
+  docs/                      setup guide, command reference, UI notes, eye check design (eye-calibration.md)
   tests/
     test_eye_extractor.py    tests for eye_extractor.py
     test_tracking_status.py  tests for tracking_status.py

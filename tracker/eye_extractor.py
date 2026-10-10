@@ -44,6 +44,7 @@ WINK_BLINK_DIFF = 0.08
 # normal open eye, so this has to come from the image. Contrast = std / mean brightness inside
 # the eye outline. From a recording: open eye 0.45-0.7, winked eye 0.2-0.66, hand over the
 # eye 0.02-0.07. Below this counts as covered.
+# per-person value, the eye check wizard should tune it. see docs/eye-calibration.md
 COVERED_CONTRAST = 0.15
 
 # Closed eyes, from the image. Tilting the head up raises MediaPipe's blink score for the OPEN eye
@@ -52,6 +53,7 @@ COVERED_CONTRAST = 0.15
 # area / brightness of the rest of the eye. Open eye (dark iris on white) 0.1-0.5 at any head
 # angle, closed eye (lid, no iris) 0.7-1.1. Above this counts as closed. 0.6 gave single-frame false
 # alarms in dimmer light, 0.65 still caught 100% of head-up winks in the recording.
+# per-person value, the eye check wizard should tune it. see docs/eye-calibration.md
 IRIS_HIDDEN_RATIO = 0.65
 
 # Debugging, will probably change as needed

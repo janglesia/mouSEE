@@ -15,6 +15,8 @@ public record Irises(double[] Left, double[] Right);
 public record Pose(double Yaw, double Pitch, double Roll);
 
 public record Eyes(EyeData Left, EyeData Right, GazeData Gaze);
+// the tracker sends more per eye (iris_ratio, contrast, openness, blink, covered, width_px),
+// add them here when needed. the eye check wizard will, see docs/eye-calibration.md
 public record EyeData(EyeOffset Offset, bool Closed);
 public record EyeOffset(double H, double V);
 public record GazeRaw(double? H, double? V);
