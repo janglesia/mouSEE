@@ -2,7 +2,10 @@ import unittest
 
 import numpy as np
 
-from tracker.eye_extractor import extract_eyes, extract_feature_vector
+import cv2
+
+from tracker.eye_extractor import (extract_eyes, extract_feature_vector, eye_contrast, iris_ratio, EyeValidator,
+                                   MAX_REJECTIONS, COVERED_CONTRAST, IRIS_HIDDEN_RATIO)
 
 
 RIGHT_EYE = {
@@ -105,6 +108,347 @@ class EyeExtractorTest(unittest.TestCase):
         self.assertIn("gaze", eyes)
         self.assertIsNotNone(eyes["left"]["iris"]["center"])
         self.assertIsNotNone(eyes["right"]["iris"]["center"])
+
+
+IRIS_POINTS = {"left": (473, 474, 475, 476, 477), "right": (468, 469, 470, 471, 472)}
+OPEN = {"eyeBlinkLeft": 0.05, "eyeBlinkRight": 0.05}
+CLOSED = {"eyeBlinkLeft": 0.9, "eyeBlinkRight": 0.9}
+
+
+# both eyes, with optional changes to one eye to fake a glitch
+def build_face(width=0.24, left_width=None, right_width=None, left_height=0.08, right_height=0.08,
+               left_iris_dx=0.0, left_iris_dy=0.0, left_iris_radius=None):
+    right = build_eye("right", center=(0.65, 0.5), width=right_width or width, height=right_height)
+    left = build_eye("left", center=(0.35, 0.5), width=left_width or width, height=left_height)
+    left[list(IRIS_POINTS["left"])] += (left_iris_dx, left_iris_dy)
+    if left_iris_radius is not None:
+        cx, cy = left[473]
+        left[474] = (cx - left_iris_radius, cy)
+        left[475] = (cx + left_iris_radius, cy)
+        left[476] = (cx, cy - left_iris_radius)
+        left[477] = (cx, cy + left_iris_radius)
+    return right + left
+
+
+class EyeValidatorTest(unittest.TestCase):
+    def setUp(self):
+        self.validator = {"left": EyeValidator(), "right": EyeValidator()}
+
+    def run_frame(self, landmarks, blendshapes=OPEN):
+        return extract_eyes(landmarks, 1000, 1000, blendshapes, eye_validator=self.validator)
+
+    # a rejected eye must not end up in the output
+    def test_rejected_eye_is_removed_from_output(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_width=0.40))  # left eye suddenly 67% wider
+
+        self.assertIsNotNone(eyes)
+        self.assertNotIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    def test_gaze_jump_is_rejected(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_iris_dx=0.11))  # iris jumps to the corner in one frame
+
+        self.assertNotIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    # one bad frame shouldn't affect the frames after it
+    def test_normal_frame_after_glitch_is_accepted(self):
+        self.run_frame(build_face())
+        self.run_frame(build_face(left_width=0.40))
+        eyes = self.run_frame(build_face())
+
+        self.assertIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    # e.g. leaning closer: the new size has to be accepted eventually, not rejected forever
+    def test_lasting_change_is_accepted_after_max_rejections(self):
+        self.run_frame(build_face())
+        for _ in range(MAX_REJECTIONS):
+            self.assertIsNone(self.run_frame(build_face(width=0.40)))
+
+        eyes = self.run_frame(build_face(width=0.40))
+        self.assertIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    def test_tiny_iris_is_rejected_even_on_first_frame(self):
+        eyes = self.run_frame(build_face(left_iris_radius=0.001))  # ~2 px wide iris
+
+        self.assertNotIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    # the iris jumps around while the lid covers it, a blink must still be reported as closed
+    def test_closed_eye_is_kept_during_blink(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_iris_dx=0.11), blendshapes=CLOSED)
+
+        self.assertIn("left", eyes)
+        self.assertTrue(eyes["left"]["closed"])
+
+    # after a blink the eye is compared to how it looked before the blink
+    def test_closed_eye_does_not_become_reference(self):
+        self.run_frame(build_face())
+        self.run_frame(build_face(left_iris_dx=0.11), blendshapes=CLOSED)
+        eyes = self.run_frame(build_face())
+
+        self.assertIn("left", eyes)
+        self.assertFalse(eyes["left"]["closed"])
+
+    def test_reset_forgets_previous_eye(self):
+        self.run_frame(build_face())
+        self.validator["left"].reset()
+        self.validator["right"].reset()
+        eyes = self.run_frame(build_face(width=0.40))
+
+        self.assertIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    # MAX_EYE_WIDTH_JUMP is 35%: just under passes, just over doesn't
+    def test_width_jump_threshold(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_width=0.24 * 1.34))
+        self.assertIn("left", eyes)
+
+        self.setUp()
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_width=0.24 * 1.36))
+        self.assertNotIn("left", eyes)
+
+    def test_vertical_gaze_jump_is_rejected(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_iris_dy=0.11))
+
+        self.assertNotIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    # the other tests glitch the left eye, make sure the right one is checked too
+    def test_right_eye_glitch_is_rejected(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(right_width=0.40))
+
+        self.assertNotIn("right", eyes)
+        self.assertIn("left", eyes)
+
+    # good frames in between reset the count, so scattered glitches never get accepted
+    def test_scattered_glitches_are_all_rejected(self):
+        self.run_frame(build_face())
+        # runs of glitches just short of the limit, so they'd add up past it if the count never reset
+        for _ in range(3):
+            for _ in range(MAX_REJECTIONS - 1):
+                self.assertNotIn("left", self.run_frame(build_face(left_width=0.40)))
+            self.assertIn("left", self.run_frame(build_face()))
+
+    # only the gaze check is skipped for closed eyes, the size check still applies
+    def test_closed_eye_with_width_jump_is_rejected(self):
+        self.run_frame(build_face())
+        eyes = self.run_frame(build_face(left_width=0.40), blendshapes=CLOSED)
+
+        self.assertNotIn("left", eyes)
+        self.assertIn("right", eyes)
+
+    # starting with closed eyes leaves no reference, so the first open eye becomes it
+    def test_first_open_eye_after_closed_start_becomes_reference(self):
+        eyes = self.run_frame(build_face(), blendshapes=CLOSED)
+        self.assertTrue(eyes["left"]["closed"])
+
+        eyes = self.run_frame(build_face(left_iris_dx=0.11))
+        self.assertIn("left", eyes)
+
+        # the iris jumping back from there is a glitch compared to that reference
+        eyes = self.run_frame(build_face())
+        self.assertNotIn("left", eyes)
+
+    # the validator is optional, without one nothing gets filtered
+    def test_without_validator_nothing_is_filtered(self):
+        extract_eyes(build_face(), 1000, 1000, OPEN)
+        eyes = extract_eyes(build_face(left_width=0.40), 1000, 1000, OPEN)
+
+        self.assertIn("left", eyes)
+        self.assertIn("right", eyes)
+
+
+# numbers based on a real recording: a winked eye only gets ~2/3 as open as the other one
+# (height 0.05 vs 0.08 here) and its blink score only reaches ~0.2-0.35
+class WinkTest(unittest.TestCase):
+    def test_left_wink_is_closed(self):
+        eyes = extract_eyes(build_face(left_height=0.05), 1000, 1000,
+                            {"eyeBlinkLeft": 0.25, "eyeBlinkRight": 0.05})
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+        self.assertEqual(eyes["gaze"]["eyes_used"], 1)  # gaze comes from the open eye only
+
+    def test_right_wink_is_closed(self):
+        eyes = extract_eyes(build_face(right_height=0.05), 1000, 1000,
+                            {"eyeBlinkLeft": 0.05, "eyeBlinkRight": 0.3})
+
+        self.assertFalse(eyes["left"]["closed"])
+        self.assertTrue(eyes["right"]["closed"])
+
+    # eyes are never exactly the same size, a small difference isn't a wink
+    def test_slightly_smaller_eye_is_not_closed(self):
+        eyes = extract_eyes(build_face(left_height=0.072), 1000, 1000,  # 90% as open
+                            {"eyeBlinkLeft": 0.25, "eyeBlinkRight": 0.05})
+
+        self.assertFalse(eyes["left"]["closed"])
+
+    # e.g. head turned: one eye looks smaller, but the blink scores don't agree it's closing
+    def test_smaller_eye_without_higher_blink_is_not_closed(self):
+        eyes = extract_eyes(build_face(left_height=0.05), 1000, 1000,
+                            {"eyeBlinkLeft": 0.05, "eyeBlinkRight": 0.05})
+
+        self.assertFalse(eyes["left"]["closed"])
+
+    def test_wink_without_blendshapes_uses_openness_only(self):
+        eyes = extract_eyes(build_face(left_height=0.05), 1000, 1000, None)
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    def test_both_eyes_closed_still_works(self):
+        eyes = extract_eyes(build_face(), 1000, 1000, CLOSED)
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertTrue(eyes["right"]["closed"])
+        self.assertEqual(eyes["gaze"]["direction"], "closed")
+
+    # the validator runs after the wink check, so a winked eye gets the closed-eye treatment
+    def test_winked_eye_is_kept_by_validator(self):
+        validator = {"left": EyeValidator(), "right": EyeValidator()}
+        extract_eyes(build_face(), 1000, 1000, OPEN, eye_validator=validator)
+        eyes = extract_eyes(build_face(left_height=0.05, left_iris_dx=0.11), 1000, 1000,
+                            {"eyeBlinkLeft": 0.25, "eyeBlinkRight": 0.05}, eye_validator=validator)
+
+        self.assertIn("left", eyes)
+        self.assertTrue(eyes["left"]["closed"])
+
+
+SIZE = 1000
+EYE_CENTERS = {"left": (0.35, 0.5), "right": (0.65, 0.5)}  # mirrored, like the landmarks
+
+
+# build_face only sets the points the measurements use, the covered check also needs the outline
+def face_with_outlines(**face_args):
+    landmarks = build_face(**face_args)
+    for name, eye in (("left", LEFT_EYE), ("right", RIGHT_EYE)):
+        cx, cy = EYE_CENTERS[name]
+        n = len(eye["outline"])
+        for k, idx in enumerate(eye["outline"]):
+            angle = 2 * np.pi * k / n
+            landmarks[idx] = (cx + 0.12 * np.cos(angle), cy + 0.06 * np.sin(angle))
+    return landmarks
+
+
+# fake camera frame (not mirrored, like the real one): an open eye is a white eye with a dark
+# iris, a covered eye is the same flat skin colour as the rest of the face, a closed eye is skin
+# with a dark lash line across it (so it isn't flat like a covered one, but has no iris)
+def make_image(covered=(), closed=()):
+    image = np.full((SIZE, SIZE, 3), 130, np.uint8)
+    for name, (cx, cy) in EYE_CENTERS.items():
+        center = (int((1 - cx) * SIZE), int(cy * SIZE))
+        if name in covered:
+            continue
+        if name in closed:
+            cv2.line(image, (center[0] - 110, center[1]), (center[0] + 110, center[1]), (30, 30, 30), 10)
+            continue
+        cv2.ellipse(image, center, (120, 60), 0, 0, 360, (220, 220, 220), -1)
+        cv2.circle(image, center, 40, (30, 30, 30), -1)
+    return image
+
+
+class CoveredEyeTest(unittest.TestCase):
+    def run_frame(self, covered=(), blendshapes=OPEN):
+        return extract_eyes(face_with_outlines(), SIZE, SIZE, blendshapes, image=make_image(covered))
+
+    def test_eye_contrast(self):
+        outline = np.array([[300, 450], [400, 450], [400, 550], [300, 550]], np.int32)
+        flat = np.full((SIZE, SIZE, 3), 130, np.uint8)
+        self.assertLess(eye_contrast(flat, outline), COVERED_CONTRAST)
+
+        eye = flat.copy()
+        cv2.circle(eye, (350, 500), 30, (30, 30, 30), -1)
+        self.assertGreater(eye_contrast(eye, outline), COVERED_CONTRAST)
+
+    def test_open_eyes_are_not_covered(self):
+        eyes = self.run_frame()
+
+        self.assertFalse(eyes["left"]["covered"])
+        self.assertFalse(eyes["right"]["covered"])
+        self.assertGreater(eyes["left"]["contrast"], COVERED_CONTRAST)
+        self.assertEqual(eyes["gaze"]["eyes_used"], 2)
+
+    # also checks the mirroring: covering the left eye must flag the left eye, not the right
+    def test_covered_eye_is_flagged_and_not_used_for_gaze(self):
+        eyes = self.run_frame(covered=("left",))
+
+        self.assertTrue(eyes["left"]["covered"])
+        self.assertFalse(eyes["right"]["covered"])
+        self.assertEqual(eyes["gaze"]["eyes_used"], 1)
+
+    def test_both_covered(self):
+        eyes = self.run_frame(covered=("left", "right"))
+
+        self.assertEqual(eyes["gaze"]["eyes_used"], 0)
+        self.assertEqual(eyes["gaze"]["direction"], "covered")
+
+    # a hand pressing on the lid can push the blink score up, that must not count as a wink
+    def test_covered_eye_is_never_closed(self):
+        eyes = self.run_frame(covered=("left",), blendshapes={"eyeBlinkLeft": 0.9, "eyeBlinkRight": 0.05})
+
+        self.assertTrue(eyes["left"]["covered"])
+        self.assertFalse(eyes["left"]["closed"])
+
+    def test_without_image_nothing_is_covered(self):
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, OPEN)
+
+        self.assertFalse(eyes["left"]["covered"])
+        self.assertIsNone(eyes["left"]["contrast"])
+
+    def test_iris_ratio(self):
+        outline = np.array([[250, 450], [450, 450], [450, 550], [250, 550]], np.int32)
+        eye = np.full((SIZE, SIZE, 3), 220, np.uint8)
+        cv2.circle(eye, (350, 500), 40, (30, 30, 30), -1)
+        self.assertLess(iris_ratio(eye, outline, (350, 500), 40), IRIS_HIDDEN_RATIO)
+
+        lid = np.full((SIZE, SIZE, 3), 130, np.uint8)
+        self.assertGreater(iris_ratio(lid, outline, (350, 500), 40), IRIS_HIDDEN_RATIO)
+
+    def test_closed_eye_from_image_is_closed_not_covered(self):
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, OPEN, image=make_image(closed=("left",)))
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertFalse(eyes["left"]["covered"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    # the head-tilt bug: tilting up gives the open eye a high blink score too, so the scores
+    # say nothing. the image still shows which eye has no iris
+    def test_wink_with_head_tilted_up(self):
+        tilted = {"eyeBlinkLeft": 0.37, "eyeBlinkRight": 0.38}
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, tilted, image=make_image(closed=("left",)))
+
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    # the image wins over the blink score in the other direction too
+    def test_visible_iris_is_open_despite_high_blink_score(self):
+        eyes = self.run_frame(blendshapes={"eyeBlinkLeft": 0.7, "eyeBlinkRight": 0.7})
+
+        self.assertFalse(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+
+    # the wink rule only runs without an image, here the eye shapes say "wink" but both irises are visible
+    def test_wink_rule_skipped_when_image_shows_iris(self):
+        eyes = extract_eyes(face_with_outlines(left_height=0.05), SIZE, SIZE,
+                            {"eyeBlinkLeft": 0.25, "eyeBlinkRight": 0.05}, image=make_image())
+
+        self.assertFalse(eyes["left"]["closed"])
+
+    def test_feature_vector_rejects_covered_eye(self):
+        result = extract_feature_vector(self.run_frame(covered=("right",)))
+
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["reason"], "Eye covered")
 
 
 class FeatureVectorTest(unittest.TestCase):

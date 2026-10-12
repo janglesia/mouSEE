@@ -7,7 +7,9 @@ Log/debug text goes to stderr so it never corrupts the JSON stream.
 
 Messages:
   {"type":"ready","width":1920,"height":1080}
-  {"type":"frame","t":1234,"faces":[{
+  {"type":"frame","t":1234,
+   "tracking":{"state":"ok","reason":null},  # ok / eyes_closed / lost, see tracking_status.py
+   "faces":[{
       "box":[x,y,w,h],                       # normalized 0-1, around all landmarks
       "landmarks":[[x,y,z], ...478],         # normalized 0-1 (z: depth, roughly same scale as x)
       "irises":{"left":[x,y],"right":[x,y]}, # iris centers (landmarks 473 and 468)
@@ -24,7 +26,8 @@ https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_lan
 
 Run standalone to test:  python face_tracker.py --preview
 """
-from eye_extractor import extract_eyes, draw_eyes, GazeSmoother
+from eye_extractor import extract_eyes, draw_eyes, GazeSmoother, EyeValidator
+from tracking_status import tracking_status
 
 import argparse
 import json
@@ -81,9 +84,9 @@ class Preview(threading.Thread):
         self.new_frame = threading.Event()
         self.closed = threading.Event()  # set when the user presses q
 
-    def show(self, frame, faces):
+    def show(self, frame, faces, tracking):
         with self.lock:
-            self.latest = (frame, faces)
+            self.latest = (frame, faces, tracking)
         self.new_frame.set()
 
     def run(self):
@@ -94,7 +97,7 @@ class Preview(threading.Thread):
             shown_at = time.monotonic()
             self.new_frame.clear()
             with self.lock:
-                frame, faces = self.latest
+                frame, faces, tracking = self.latest
             # half size so a 1080p preview fits on screen. shrink first, drawing on the small image is cheaper
             fh, fw = frame.shape[0] // 2, frame.shape[1] // 2
             view = cv2.resize(cv2.flip(frame, 1), (fw, fh))  # mirror to match the output coordinates
@@ -112,6 +115,11 @@ class Preview(threading.Thread):
                 p = f["pose"]
                 cv2.putText(view, f"yaw {p['yaw']:+.0f}  pitch {p['pitch']:+.0f}  roll {p['roll']:+.0f}",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            # green when ok, orange for closed eyes, red when lost
+            state = tracking["state"]
+            label = state.upper() + (f": {tracking['reason']}" if tracking["reason"] else "")
+            color = {"ok": (0, 200, 0), "eyes_closed": (0, 165, 255)}.get(state, (0, 0, 255))
+            cv2.putText(view, label, (10, fh - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
             cv2.imshow("Tracker preview (q to quit)", view)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.closed.set()
@@ -171,18 +179,35 @@ def main():
     start = time.monotonic()
     last_ts = -1
 
+    # used for measuring FPS (different from current FPS which counts incoming frame messages)
+    capture_window_start = time.monotonic()
+    capture_frame_count = 0
+    capture_fps = 0.0
+
     preview = None
     if args.preview:
         preview = Preview()
         preview.start()
 
     gaze_smoother = GazeSmoother()
+    # one per eye, they remember the last good eye to catch one-frame glitches
+    eye_validator = {"left": EyeValidator(), "right": EyeValidator()}
     try:
         while preview is None or not preview.closed.is_set():
             ok, frame = cap.read()
             if not ok:
                 emit({"type": "error", "message": "Camera stopped returning frames"})
                 break
+
+            # calculates capture rate over ~1 sec windows
+            capture_frame_count += 1
+            capture_elapsed = time.monotonic() - capture_window_start
+
+            if capture_elapsed >= 1.0:
+                capture_fps = capture_frame_count / capture_elapsed
+                capture_frame_count = 0
+                capture_window_start = time.monotonic()
+
 
             # VIDEO mode requires strictly increasing timestamps
             ts = int((time.monotonic() - start) * 1000)
@@ -191,13 +216,17 @@ def main():
                 ts = last_ts + 1
             last_ts = ts
 
-            # detect on the unmirrored frame so left/right eye labels are correct, flip x after
+            # timed detection on the unmirrored frame so left/right eye labels are correct, flip x after
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            landmark_start = time.perf_counter()
             result = landmarker.detect_for_video(
                 mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ts)
+            landmark_ms = (time.perf_counter() - landmark_start) * 1000.0
 
             if not result.face_landmarks:
                 gaze_smoother.reset()
+                eye_validator["left"].reset()
+                eye_validator["right"].reset()
             faces = []
             for i, lms in enumerate(result.face_landmarks):
                 pts = [[round(1 - p.x, 4), round(p.y, 4), round(p.z, 4)] for p in lms]
@@ -213,12 +242,16 @@ def main():
                                     for c in result.face_blendshapes[i]
                                     if c.category_name != "_neutral"},
                 }
-                face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"], gaze_smoother=gaze_smoother) 
+                face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"],
+                                            gaze_smoother=gaze_smoother, eye_validator=eye_validator,
+                                            image=frame)
                 faces.append(face)
-            emit({"type": "frame", "t": ts, "wall": wall, "faces": faces})
+            tracking = tracking_status(faces[0] if faces else None)
+            emit({"type": "frame", "t": ts, "wall": wall, "capture_fps": capture_fps, "landmark_ms": landmark_ms,
+                  "tracking": tracking, "faces": faces})
 
             if preview:
-                preview.show(frame, faces)
+                preview.show(frame, faces, tracking)
     except (BrokenPipeError, KeyboardInterrupt):
         pass  # C# app closed or Ctrl+C
     finally:

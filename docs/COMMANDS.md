@@ -63,12 +63,12 @@ Options can be combined in any order.
 
 ## Run the app (from `app/`)
 
-The app has to be run from inside `app/`, otherwise it can't find `../tracker`.
+`dotnet run` needs to be run where `mouSEE.csproj` is, so `cd app` first. The app finds the `tracker` folder by itself.
 
 ```bash
 cd app
 
-# Run with just the status line (Ctrl+C to stop)
+# Run with just the overlay (Ctrl+Alt+Q to quit)
 dotnet run
 
 # Run and also show the camera window
@@ -77,6 +77,9 @@ dotnet run -- --preview
 # Use a second camera
 dotnet run -- --preview --camera 1
 
+# Open the calibration screen instead of the overlay (doesn't start the tracker)
+dotnet run -- --calibration-preview
+
 # Build without running (to check for errors)
 dotnet build
 
@@ -84,7 +87,7 @@ dotnet build
 dotnet clean
 ```
 
-The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too.
+The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only option the app itself uses is `--calibration-preview`.
 
 ## Tracker options
 

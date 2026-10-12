@@ -32,6 +32,30 @@ CLOSED_BLINK = 0.5
 # This is a normalized eyelid-gap / eye-width ratio.
 CLOSED_OPENNESS = 0.15
 
+# Winks (one eye closed). MediaPipe links the eyes, so for a wink the blink score only reaches
+# ~0.2-0.35 and the lid points stay ~2/3 open. Compare the eyes to each other instead:
+# closed if this eye is less than WINK_OPENNESS_RATIO as open as the other one AND its blink
+# score is WINK_BLINK_DIFF higher. Tuned on a recording: winks 100% detected, open eyes 0%.
+# Only used without a camera image, with one IRIS_HIDDEN_RATIO decides (this breaks when the head tilts up).
+WINK_OPENNESS_RATIO = 0.8
+WINK_BLINK_DIFF = 0.08
+
+# Covered eyes (hand, hair...). MediaPipe guesses where a hidden eye is and reports it as a
+# normal open eye, so this has to come from the image. Contrast = std / mean brightness inside
+# the eye outline. From a recording: open eye 0.45-0.7, winked eye 0.2-0.66, hand over the
+# eye 0.02-0.07. Below this counts as covered.
+# per-person value, the eye check wizard should tune it. see docs/eye-calibration.md
+COVERED_CONTRAST = 0.15
+
+# Closed eyes, from the image. Tilting the head up raises MediaPipe's blink score for the OPEN eye
+# too, so the blink-based wink rule stops working (a recording: winks caught 1-4% of the time with
+# the head tilted up). Instead check if the iris is visible: iris ratio = brightness of the iris
+# area / brightness of the rest of the eye. Open eye (dark iris on white) 0.1-0.5 at any head
+# angle, closed eye (lid, no iris) 0.7-1.1. Above this counts as closed. 0.6 gave single-frame false
+# alarms in dimmer light, 0.65 still caught 100% of head-up winks in the recording.
+# per-person value, the eye check wizard should tune it. see docs/eye-calibration.md
+IRIS_HIDDEN_RATIO = 0.65
+
 # Debugging, will probably change as needed
 H_THRESH = 0.12
 V_THRESH = 0.08
@@ -45,6 +69,8 @@ MAX_EYE_WIDTH_JUMP = 0.35
 MAX_GAZE_JUMP_H = 0.75
 MAX_GAZE_JUMP_V = 0.75
 MIN_IRIS_DIAMETER_PX = 3.0
+# a jump that lasts this many frames in a row is real movement (e.g. leaning in), not a glitch
+MAX_REJECTIONS = 5
 
 def _r(x, n=4):
     return round(float(x), n)
@@ -84,11 +110,17 @@ class GazeSmoother:
 class EyeValidator:
     def __init__(self):
         self.prev_eye = None
+        self.rejections = 0  # rejected frames in a row
 
     def reset(self):
         self.prev_eye = None
+        self.rejections = 0
 
     def is_valid(self, eye):
+        # check that the iris diameter is a reasonable size. applies to every frame, even the first
+        if eye["iris"]["diameter_px"] < MIN_IRIS_DIAMETER_PX:
+            return False
+
         # Accept the first valid eye as the reference.
         if self.prev_eye is None:
             return True
@@ -102,6 +134,10 @@ class EyeValidator:
         if width_jump > MAX_EYE_WIDTH_JUMP:
             return False
 
+        # iris position is meaningless while the lid (or a hand) covers it, so skip the gaze check
+        if eye["closed"] or eye.get("covered"):
+            return True
+
         # Check that gaze direction does not jump unreasonably far from previous frame
         gaze_jump_h = abs(eye["offset"]["h"] - prev_eye["offset"]["h"])
         gaze_jump_v = abs(eye["offset"]["v"] - prev_eye["offset"]["v"])
@@ -110,23 +146,76 @@ class EyeValidator:
         if gaze_jump_h > MAX_GAZE_JUMP_H or gaze_jump_v > MAX_GAZE_JUMP_V:
             return False
 
-        # check that the iris diameter is a reasonable size
-        iris_px = eye["iris"]["diameter_px"]
-        # if not, reject the new eye data
-        if iris_px < MIN_IRIS_DIAMETER_PX:
-            return False
-
         # if it surpasses all checks, return true
         return True
 
-    # update the current eye as new reference
+    # returns True if the eye should be used. accepted open eyes become the new reference
     def update(self, eye):
-        if self.is_valid(eye):
-            self.prev_eye = eye
-            return True
-        return False
+        # comparing against an old reference forever would lock the eye out after a real change
+        # (leaning closer makes the eye wider), so after enough rejections in a row start over
+        if self.rejections >= MAX_REJECTIONS:
+            self.reset()
 
-def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None, eye_validator=None):
+        if not self.is_valid(eye):
+            self.rejections += 1
+            return False
+
+        self.rejections = 0
+        # don't use a closed or covered eye as the reference, after a blink compare to the eye from before it
+        if not eye["closed"] and not eye.get("covered"):
+            self.prev_eye = eye
+        return True
+
+def _eye_crop(image, outline_px):
+    """Grayscale crop around the eye, a mask of the eye outline in it, and the crop's offset.
+    Only converts the small crop, not the whole frame."""
+    x, y, w, h = cv2.boundingRect(outline_px)
+    x0, y0 = max(x, 0), max(y, 0)
+    crop = image[y0:y + h, x0:x + w]
+    if crop.size == 0:
+        return None
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    mask = np.zeros(gray.shape, np.uint8)
+    cv2.fillPoly(mask, [outline_px - (x0, y0)], 255)
+    return gray, mask, np.array([x0, y0])
+
+def eye_contrast(image, outline_px):
+    """std / mean brightness inside the eye outline, see COVERED_CONTRAST.
+
+    image: the camera frame (BGR). outline_px: the eye outline in that image's pixel coordinates.
+    """
+    eye = _eye_crop(image, outline_px)
+    if eye is None:
+        return None
+    gray, mask, _ = eye
+    values = gray[mask > 0]
+    if values.size < 10:
+        return None
+    return float(values.std() / max(values.mean(), 1.0))
+
+def iris_ratio(image, outline_px, iris_center_px, iris_radius_px):
+    """Brightness of the iris area / brightness of the rest of the eye, see IRIS_HIDDEN_RATIO.
+    Same coordinates as eye_contrast."""
+    eye = _eye_crop(image, outline_px)
+    if eye is None:
+        return None
+    gray, mask, offset = eye
+    cx, cy = (np.asarray(iris_center_px) - offset).astype(int)
+    # a bit smaller than the iris so it doesn't catch the white around it
+    iris = np.zeros_like(mask)
+    cv2.circle(iris, (int(cx), int(cy)), max(2, int(iris_radius_px * 0.7)), 255, -1)
+    iris_values = gray[(iris > 0) & (mask > 0)]
+    # and the rest of the eye with some space around the iris
+    around = cv2.dilate(iris, np.ones((5, 5), np.uint8), iterations=2)
+    rest_values = gray[(around == 0) & (mask > 0)]
+    if iris_values.size < 3 or rest_values.size < 3:
+        return None
+    return float(iris_values.mean() / max(rest_values.mean(), 1.0))
+
+def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None, eye_validator=None,
+                 image=None):
+    # image: optional camera frame as captured (BGR, NOT mirrored, same size as width x height).
+    # only used to check whether an eye is covered.
     if landmarks is None:
         return None
 
@@ -216,6 +305,24 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
             else:
                 closed = openness < CLOSED_OPENNESS
 
+            contrast = iris_visibility = None
+            if image is not None:
+                # landmarks are mirrored, the image isn't, so flip x back
+                outline_px = px[list(e["outline"])].copy()
+                outline_px[:, 0] = width - outline_px[:, 0]
+                outline_px = outline_px.astype(np.int32)
+                iris_center_px = (width - iris_center[0], iris_center[1])
+                contrast = eye_contrast(image, outline_px)
+                iris_visibility = iris_ratio(image, outline_px, iris_center_px, iris_diameter / 2.0)
+            covered = contrast is not None and contrast < COVERED_CONTRAST
+            if covered:
+                # a hand pressing on the lid can push the blink score up, a covered eye is never a wink/blink
+                closed = False
+            elif iris_visibility is not None:
+                # the image shows directly whether the iris is there, more reliable than the blink
+                # score (which tilting the head throws off)
+                closed = iris_visibility > IRIS_HIDDEN_RATIO
+
             out[name] = {
                 "outline": (lm[list(e["outline"])].round(4).tolist()),
                 "corners": {
@@ -248,15 +355,36 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
                     else _r(blink, 3)
                 ),
                 "closed": bool(closed),
+                "contrast": None if contrast is None else _r(contrast, 3),
+                "iris_ratio": None if iris_visibility is None else _r(iris_visibility, 3),
+                "covered": bool(covered),
             }
-
-            # eye validator call
-            if not eye_validator[name].update(out[name]):
-                continue
 
         # skip this eye and only use the other eye if something goes wrong
         except(IndexError, TypeError, ValueError):
             continue
+
+    # winks need both eyes measured before deciding, see WINK_OPENNESS_RATIO
+    if "left" in out and "right" in out:
+        for name, other in (("left", "right"), ("right", "left")):
+            eye, other_eye = out[name], out[other]
+            # comparing against a covered eye means nothing, MediaPipe made it up.
+            # and when the image already showed whether the iris is there, that decided it
+            if eye["closed"] or eye["covered"] or other_eye["covered"] or eye["iris_ratio"] is not None:
+                continue
+            less_open = eye["openness"] < WINK_OPENNESS_RATIO * other_eye["openness"]
+            # without blendshapes only the openness can be compared
+            blink_higher = (eye["blink"] is None or other_eye["blink"] is None
+                            or eye["blink"] - other_eye["blink"] > WINK_BLINK_DIFF)
+            if less_open and blink_higher:
+                eye["closed"] = True
+
+    # eye validator call, drop the eye if it looks like a glitch.
+    # after the wink check because the validator treats closed eyes differently
+    if eye_validator is not None:
+        for name in ("left", "right"):
+            if name in out and not eye_validator[name].update(out[name]):
+                del out[name]
 
     # if both eyes are causing problems, return None
     if not out:
@@ -265,7 +393,7 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
     open_eyes = [
         out[name]
         for name in ("left", "right")
-        if name in out and not out[name]["closed"]
+        if name in out and not out[name]["closed"] and not out[name]["covered"]
     ]
 
     if open_eyes:
@@ -318,9 +446,11 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
         }
 
     else:
-        # Both eyes closed.
+        # no usable eye: both closed, or covered (or one of each)
+        any_covered = any(out[name]["covered"] for name in ("left", "right") if name in out)
         out["gaze"] = {
-            "raw": { "h": None, "v": None}, "h": None, "v": None, "direction": "closed",
+            "raw": { "h": None, "v": None}, "h": None, "v": None,
+            "direction": "covered" if any_covered else "closed",
             "binocular_error": {"h": None, "v": None}, "eyes_used": 0,
         }
 
@@ -359,6 +489,10 @@ def extract_feature_vector(eyes, timestamp=None):
 
     left_eye = eyes["left"]
     right_eye = eyes["right"]
+
+    # a covered eye's numbers are made up by MediaPipe
+    if left_eye.get("covered", False) or right_eye.get("covered", False):
+        return {"valid": False, "reason": "Eye covered", "timestamp": timestamp, "features": None}
 
     # Check if either eye is closed
     if left_eye.get("closed", False) or right_eye.get("closed", False):
@@ -460,7 +594,7 @@ def draw_eyes(view, eyes, frame_w):
         cv2.circle(view, (int(cx * fw), int(cy * fh)), radius, (255, 105, 180), 1)
         cv2.circle(view, (int(cx * fw), int(cy * fh)), 2, (0, 0, 255), -1)
 
-        state = "CLOSED" if e["closed"] else "OPEN"
+        state = "COVERED" if e.get("covered") else "CLOSED" if e["closed"] else "OPEN"
 
         cv2.putText(view, f"{name}: {state}", (int(e["corners"]["left"][0] * fw) - 20, int(e["corners"]["left"][1] * fh) - 10,), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
@@ -531,6 +665,8 @@ def _main():
 
             # New stream -> reset smoothing.
             gaze_smoother.reset()
+            eye_validator["left"].reset()
+            eye_validator["right"].reset()
             continue
 
         if msg.get("type") == "error":
@@ -547,6 +683,8 @@ def _main():
 
         if not faces:
             gaze_smoother.reset()
+            eye_validator["left"].reset()
+            eye_validator["right"].reset()
             continue
 
         # For now we track the first detected face.
