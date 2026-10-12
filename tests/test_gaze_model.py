@@ -1,0 +1,355 @@
+import math
+import unittest
+
+from tracker.eye_extractor import extract_eyes, extract_feature_vector
+from tracker.gaze_model import (estimate_gaze, estimate_gaze_from_features, eye_angle, GazeParams,
+                                K_H, K_V, MAX_SIN, GAIN_X, GAIN_Y)
+# reuse the fake landmark builder
+from tests.test_eye_extractor import build_eye
+
+
+# an eye dict shaped like the ones extract_eyes() builds, with only the fields gaze_model reads
+def make_eye(h=0.0, v=0.0, closed=False, covered=False):
+    return {"offset": {"h": h, "v": v}, "closed": closed, "covered": covered}
+
+
+# eyes dict like extract_eyes() returns. an eye that is None is left out, like when the validator drops it.
+def make_eyes(left=None, right=None):
+    eyes = {"gaze": {"h": 9.9, "v": 9.9, "raw": {"h": 9.9, "v": 9.9}}}
+    if left is not None:
+        eyes["left"] = left
+    if right is not None:
+        eyes["right"] = right
+    return eyes
+
+
+# the iris offset an eye turned by this many degrees should produce (the model's geometry run forward)
+def offset_for(degrees, k=K_H):
+    return k * math.sin(math.radians(degrees))
+
+
+# the same, shaped like the result of extract_feature_vector()
+def make_features(left_h=0.0, left_v=0.0, right_h=0.0, right_v=0.0):
+    return {
+        "valid": True,
+        "timestamp": None,
+        "features": [left_h, left_v, 0.3, right_h, right_v, 0.3],
+        "left": {"iris_x": left_h, "iris_y": left_v, "eye_open": 0.3},
+        "right": {"iris_x": right_h, "iris_y": right_v, "eye_open": 0.3},
+    }
+
+
+class EyeAngleTest(unittest.TestCase):
+    # the whole point of the model: undo offset = k * sin(angle)
+    def test_inverts_the_eyeball_geometry(self):
+        for degrees in (-40, -10, 0, 10, 40):
+            with self.subTest(degrees=degrees):
+                self.assertAlmostEqual(math.degrees(eye_angle(offset_for(degrees), K_H)), degrees, places=6)
+
+    def test_zero_offset_is_zero_degrees(self):
+        self.assertEqual(eye_angle(0.0, K_H), 0.0)
+
+    # the iris moves less per degree the further it turns, so a linear map would be too small at the edges
+    def test_angle_grows_faster_than_the_offset(self):
+        self.assertGreater(eye_angle(0.5, K_H), 2 * eye_angle(0.25, K_H))
+
+    def test_is_symmetric(self):
+        self.assertAlmostEqual(eye_angle(-0.3, K_H), -eye_angle(0.3, K_H))
+
+    # an offset bigger than the geometry allows must not crash asin
+    def test_huge_offset_is_clamped(self):
+        limit = math.asin(MAX_SIN)
+        self.assertAlmostEqual(eye_angle(50.0, K_H), limit)
+        self.assertAlmostEqual(eye_angle(-50.0, K_H), -limit)
+
+    def test_larger_k_means_a_smaller_angle(self):
+        self.assertLess(eye_angle(0.3, 1.0), eye_angle(0.3, 0.7))
+
+
+class EstimateGazeTest(unittest.TestCase):
+    def test_centered_iris_is_straight_ahead(self):
+        result = estimate_gaze(make_eyes(make_eye(), make_eye()))
+        self.assertTrue(result["valid"])
+        self.assertAlmostEqual(result["h_deg"], 0.0)
+        self.assertAlmostEqual(result["v_deg"], 0.0)
+        self.assertAlmostEqual(result["x"], 0.5)
+        self.assertAlmostEqual(result["y"], 0.5)
+        self.assertEqual(result["eyes_used"], 2)
+
+    def test_recovers_a_known_horizontal_angle(self):
+        eye = make_eye(h=offset_for(12))
+        result = estimate_gaze(make_eyes(eye, eye))
+        self.assertAlmostEqual(result["h_deg"], 12.0, places=2)
+        self.assertAlmostEqual(result["v_deg"], 0.0)
+
+    def test_recovers_a_known_vertical_angle(self):
+        eye = make_eye(v=offset_for(8, K_V))
+        result = estimate_gaze(make_eyes(eye, eye))
+        self.assertAlmostEqual(result["v_deg"], 8.0, places=2)
+        self.assertAlmostEqual(result["h_deg"], 0.0)
+
+    # + is the person's right and down, - is left and up
+    def test_signs(self):
+        right = estimate_gaze(make_eyes(make_eye(h=0.2), make_eye(h=0.2)))
+        left = estimate_gaze(make_eyes(make_eye(h=-0.2), make_eye(h=-0.2)))
+        down = estimate_gaze(make_eyes(make_eye(v=0.1), make_eye(v=0.1)))
+        up = estimate_gaze(make_eyes(make_eye(v=-0.1), make_eye(v=-0.1)))
+
+        self.assertGreater(right["h_deg"], 0)
+        self.assertGreater(right["x"], 0.5)
+        self.assertLess(left["h_deg"], 0)
+        self.assertLess(left["x"], 0.5)
+        self.assertGreater(down["v_deg"], 0)
+        self.assertGreater(down["y"], 0.5)
+        self.assertLess(up["v_deg"], 0)
+        self.assertLess(up["y"], 0.5)
+
+    def test_opposite_offsets_mirror_around_the_center(self):
+        a = estimate_gaze(make_eyes(make_eye(h=0.25, v=0.1), make_eye(h=0.25, v=0.1)))
+        b = estimate_gaze(make_eyes(make_eye(h=-0.25, v=-0.1), make_eye(h=-0.25, v=-0.1)))
+        self.assertAlmostEqual(a["h_deg"], -b["h_deg"])
+        self.assertAlmostEqual(a["v_deg"], -b["v_deg"])
+        self.assertAlmostEqual(a["x"] - 0.5, 0.5 - b["x"], places=3)
+        self.assertAlmostEqual(a["y"] - 0.5, 0.5 - b["y"], places=3)
+
+    # horizontal and vertical don't affect each other
+    def test_axes_are_independent(self):
+        only_h = estimate_gaze(make_eyes(make_eye(h=0.2), make_eye(h=0.2)))
+        both = estimate_gaze(make_eyes(make_eye(h=0.2, v=0.1), make_eye(h=0.2, v=0.1)))
+        self.assertAlmostEqual(only_h["h_deg"], both["h_deg"])
+        self.assertAlmostEqual(only_h["x"], both["x"])
+
+    # the placeholder gains: +-15 degrees horizontal and +-10 degrees vertical span the whole screen
+    def test_default_gains_span_the_screen(self):
+        h = offset_for(15)
+        v = offset_for(10, K_V)
+        right = estimate_gaze(make_eyes(make_eye(h=h), make_eye(h=h)))
+        left = estimate_gaze(make_eyes(make_eye(h=-h), make_eye(h=-h)))
+        down = estimate_gaze(make_eyes(make_eye(v=v), make_eye(v=v)))
+        up = estimate_gaze(make_eyes(make_eye(v=-v), make_eye(v=-v)))
+        self.assertAlmostEqual(right["x"], 1.0, places=3)
+        self.assertAlmostEqual(left["x"], 0.0, places=3)
+        self.assertAlmostEqual(down["y"], 1.0, places=3)
+        self.assertAlmostEqual(up["y"], 0.0, places=3)
+
+    # the screen position is where the line of sight meets the screen: center + gain * tan(angle)
+    def test_screen_position_is_gain_times_tan_of_the_angle(self):
+        eye = make_eye(h=offset_for(7), v=offset_for(-4, K_V))
+        result = estimate_gaze(make_eyes(eye, eye))
+        self.assertAlmostEqual(result["x"], 0.5 + GAIN_X * math.tan(math.radians(7)), places=3)
+        self.assertAlmostEqual(result["y"], 0.5 + GAIN_Y * math.tan(math.radians(-4)), places=3)
+
+    def test_extreme_offset_stays_finite(self):
+        result = estimate_gaze(make_eyes(make_eye(h=50.0, v=-50.0), make_eye(h=50.0, v=-50.0)))
+        self.assertTrue(result["valid"])
+        for key in ("h_deg", "v_deg", "x", "y"):
+            self.assertTrue(math.isfinite(result[key]))
+        self.assertLessEqual(abs(result["h_deg"]), math.degrees(math.asin(MAX_SIN)) + 0.01)
+
+    # both eyes are converted to angles first, then averaged
+    def test_both_eyes_are_averaged(self):
+        result = estimate_gaze(make_eyes(make_eye(h=0.1), make_eye(h=0.3)))
+        expected = math.degrees((eye_angle(0.1, K_H) + eye_angle(0.3, K_H)) / 2)
+        self.assertAlmostEqual(result["h_deg"], expected, places=2)
+        self.assertEqual(result["eyes_used"], 2)
+
+    def test_per_eye_breakdown(self):
+        result = estimate_gaze(make_eyes(make_eye(h=0.1, v=0.05), make_eye(h=0.3, v=-0.05)))
+        self.assertAlmostEqual(result["left"]["h_deg"], math.degrees(eye_angle(0.1, K_H)), places=2)
+        self.assertAlmostEqual(result["right"]["h_deg"], math.degrees(eye_angle(0.3, K_H)), places=2)
+        self.assertAlmostEqual(result["left"]["v_deg"], math.degrees(eye_angle(0.05, K_V)), places=2)
+        self.assertAlmostEqual(result["right"]["v_deg"], math.degrees(eye_angle(-0.05, K_V)), places=2)
+
+    # the smoothed debug numbers in eyes["gaze"] are not an input (make_eyes fills them with 9.9)
+    def test_ignores_the_gaze_field(self):
+        result = estimate_gaze(make_eyes(make_eye(), make_eye()))
+        self.assertAlmostEqual(result["h_deg"], 0.0)
+        self.assertAlmostEqual(result["v_deg"], 0.0)
+
+
+class UnusableEyeTest(unittest.TestCase):
+    # a wink: the open eye alone gives the estimate, the closed eye's garbage doesn't leak in
+    def test_closed_eye_is_ignored(self):
+        winked = estimate_gaze(make_eyes(make_eye(h=0.9, v=0.9, closed=True), make_eye(h=0.1)))
+        open_only = estimate_gaze(make_eyes(right=make_eye(h=0.1)))
+        self.assertTrue(winked["valid"])
+        self.assertEqual(winked["eyes_used"], 1)
+        self.assertAlmostEqual(winked["h_deg"], open_only["h_deg"])
+        self.assertAlmostEqual(winked["v_deg"], open_only["v_deg"])
+        self.assertNotIn("left", winked)
+
+    # MediaPipe makes up the numbers of a covered eye
+    def test_covered_eye_is_ignored(self):
+        result = estimate_gaze(make_eyes(make_eye(h=0.1), make_eye(h=0.9, covered=True)))
+        self.assertEqual(result["eyes_used"], 1)
+        self.assertAlmostEqual(result["h_deg"], math.degrees(eye_angle(0.1, K_H)), places=2)
+        self.assertNotIn("right", result)
+
+    # the validator removed one eye as a glitch, the other one is enough
+    def test_missing_eye_is_fine(self):
+        for eyes in (make_eyes(left=make_eye(h=0.1)), make_eyes(right=make_eye(h=0.1))):
+            with self.subTest(eyes=sorted(k for k in eyes if k != "gaze")):
+                result = estimate_gaze(eyes)
+                self.assertTrue(result["valid"])
+                self.assertEqual(result["eyes_used"], 1)
+
+    def assertInvalid(self, result, reason):
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["reason"], reason)
+        self.assertEqual(result["eyes_used"], 0)
+        for key in ("h_deg", "v_deg", "x", "y"):
+            self.assertIsNone(result[key])
+
+    def test_no_eye_data(self):
+        self.assertInvalid(estimate_gaze(None), "No eye data")
+
+    def test_both_eyes_closed(self):
+        eyes = make_eyes(make_eye(closed=True), make_eye(closed=True))
+        self.assertInvalid(estimate_gaze(eyes), "No usable eye")
+
+    def test_both_eyes_covered(self):
+        eyes = make_eyes(make_eye(covered=True), make_eye(covered=True))
+        self.assertInvalid(estimate_gaze(eyes), "No usable eye")
+
+    def test_one_covered_one_closed(self):
+        eyes = make_eyes(make_eye(covered=True), make_eye(closed=True))
+        self.assertInvalid(estimate_gaze(eyes), "No usable eye")
+
+    def test_no_eyes_in_the_dict(self):
+        self.assertInvalid(estimate_gaze(make_eyes()), "No usable eye")
+
+    def test_non_finite_offset_is_skipped(self):
+        for bad in (float("nan"), float("inf")):
+            with self.subTest(bad=bad):
+                result = estimate_gaze(make_eyes(make_eye(h=bad), make_eye(h=0.1)))
+                self.assertEqual(result["eyes_used"], 1)
+                self.assertAlmostEqual(result["h_deg"], math.degrees(eye_angle(0.1, K_H)), places=2)
+
+    def test_both_offsets_non_finite(self):
+        eyes = make_eyes(make_eye(v=float("nan")), make_eye(h=float("inf")))
+        self.assertInvalid(estimate_gaze(eyes), "No usable eye")
+
+    def test_eye_without_offset_is_skipped(self):
+        eyes = make_eyes({"closed": False, "covered": False}, make_eye(h=0.1))
+        self.assertEqual(estimate_gaze(eyes)["eyes_used"], 1)
+
+
+class ParamsTest(unittest.TestCase):
+    EYES = make_eyes(make_eye(h=0.3, v=0.1), make_eye(h=0.3, v=0.1))
+
+    def test_params_none_uses_the_defaults(self):
+        self.assertEqual(estimate_gaze(self.EYES), estimate_gaze(self.EYES, GazeParams()))
+
+    def test_k_h_only_changes_the_horizontal_angle(self):
+        default = estimate_gaze(self.EYES)
+        custom = estimate_gaze(self.EYES, GazeParams(k_h=1.0))
+        self.assertLess(custom["h_deg"], default["h_deg"])
+        self.assertAlmostEqual(custom["v_deg"], default["v_deg"])
+
+    def test_k_v_only_changes_the_vertical_angle(self):
+        default = estimate_gaze(self.EYES)
+        custom = estimate_gaze(self.EYES, GazeParams(k_v=1.0))
+        self.assertLess(custom["v_deg"], default["v_deg"])
+        self.assertAlmostEqual(custom["h_deg"], default["h_deg"])
+
+    def test_screen_center_moves_the_straight_ahead_point(self):
+        result = estimate_gaze(make_eyes(make_eye(), make_eye()), GazeParams(center_x=0.3, center_y=0.6))
+        self.assertAlmostEqual(result["x"], 0.3)
+        self.assertAlmostEqual(result["y"], 0.6)
+
+    def test_gain_scales_the_distance_from_the_center(self):
+        eye = make_eye(h=offset_for(10), v=offset_for(10, K_V))
+        eyes = make_eyes(eye, eye)
+        near = estimate_gaze(eyes, GazeParams(gain_x=1.0, gain_y=1.0))
+        far = estimate_gaze(eyes, GazeParams(gain_x=2.0, gain_y=2.0))
+        self.assertAlmostEqual(far["x"] - 0.5, 2 * (near["x"] - 0.5), places=3)
+        self.assertAlmostEqual(far["y"] - 0.5, 2 * (near["y"] - 0.5), places=3)
+
+
+class FeatureVectorInputTest(unittest.TestCase):
+    # same numbers in, same answer out, whichever way the eyes arrive
+    def test_matches_estimate_gaze(self):
+        from_features = estimate_gaze_from_features(make_features(0.1, 0.05, 0.3, -0.02))
+        from_eyes = estimate_gaze(make_eyes(make_eye(h=0.1, v=0.05), make_eye(h=0.3, v=-0.02)))
+        self.assertEqual(from_features, from_eyes)
+
+    def test_passes_params_through(self):
+        features = make_features(0.3, 0.1, 0.3, 0.1)
+        params = GazeParams(k_h=1.0)
+        self.assertEqual(estimate_gaze_from_features(features, params),
+                         estimate_gaze(make_eyes(make_eye(h=0.3, v=0.1), make_eye(h=0.3, v=0.1)), params))
+
+    # extract_feature_vector says why it rejected the frame, that reason has to reach the caller
+    def test_invalid_feature_vector_keeps_its_reason(self):
+        rejected = {"valid": False, "reason": "Eye closed", "timestamp": None, "features": None}
+        result = estimate_gaze_from_features(rejected)
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["reason"], "Eye closed")
+        self.assertIsNone(result["x"])
+
+    def test_missing_feature_vector(self):
+        for missing in (None, {}):
+            with self.subTest(missing=missing):
+                result = estimate_gaze_from_features(missing)
+                self.assertFalse(result["valid"])
+                self.assertEqual(result["reason"], "No feature data")
+
+
+IRIS_POINTS = {"left": (473, 474, 475, 476, 477), "right": (468, 469, 470, 471, 472)}
+
+
+# both eyes at normal size, with the iris moved inside each eye (as a fraction of the image)
+def build_landmarks(iris_dx=0.0, iris_dy=0.0):
+    right = build_eye("right", center=(0.65, 0.5), width=0.24, height=0.08)
+    left = build_eye("left", center=(0.35, 0.5), width=0.24, height=0.08)
+    for pts, name in ((left, "left"), (right, "right")):
+        pts[list(IRIS_POINTS[name])] += (iris_dx, iris_dy)
+    return right + left
+
+
+# fake landmarks -> extract_eyes -> estimate_gaze, so the field names and signs the two modules agree on are tested
+class EndToEndTest(unittest.TestCase):
+    def gaze(self, iris_dx=0.0, iris_dy=0.0):
+        return estimate_gaze(extract_eyes(build_landmarks(iris_dx, iris_dy), 1000, 1000))
+
+    def test_centered_iris(self):
+        result = self.gaze()
+        self.assertTrue(result["valid"])
+        self.assertAlmostEqual(result["h_deg"], 0.0, delta=0.05)
+        self.assertAlmostEqual(result["v_deg"], 0.0, delta=0.05)
+        self.assertEqual(result["eyes_used"], 2)
+
+    def test_iris_moved_right(self):
+        self.assertGreater(self.gaze(iris_dx=0.03)["h_deg"], 5)
+
+    def test_iris_moved_left(self):
+        self.assertLess(self.gaze(iris_dx=-0.03)["h_deg"], -5)
+
+    def test_iris_moved_down(self):
+        self.assertGreater(self.gaze(iris_dy=0.02)["v_deg"], 5)
+
+    def test_iris_moved_up(self):
+        self.assertLess(self.gaze(iris_dy=-0.02)["v_deg"], -5)
+
+    # a 30 px shift in an eye that is 240 px wide is an offset of 0.25
+    def test_known_shift_gives_the_expected_angle(self):
+        expected = math.degrees(math.asin(0.25 / K_H))
+        self.assertAlmostEqual(self.gaze(iris_dx=0.03)["h_deg"], expected, delta=0.05)
+
+    def test_feature_vector_path_agrees(self):
+        eyes = extract_eyes(build_landmarks(0.03, 0.02), 1000, 1000)
+        features = extract_feature_vector(eyes)
+        self.assertTrue(features["valid"])
+        self.assertEqual(estimate_gaze_from_features(features), estimate_gaze(eyes))
+
+    # a wink from the extractor's blendshapes: the open eye is used on its own
+    def test_winked_eye_is_not_used(self):
+        blend = {"eyeBlinkLeft": 0.9, "eyeBlinkRight": 0.05}
+        eyes = extract_eyes(build_landmarks(0.03, 0.0), 1000, 1000, blend)
+        result = estimate_gaze(eyes)
+        self.assertEqual(result["eyes_used"], 1)
+        self.assertNotIn("left", result)
+
+
+if __name__ == "__main__":
+    unittest.main()
