@@ -27,6 +27,7 @@ https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_lan
 Run standalone to test:  python face_tracker.py --preview
 """
 from eye_extractor import extract_eyes, draw_eyes, GazeSmoother, EyeValidator
+from gaze_model import estimate_gaze
 from tracking_status import tracking_status
 
 import argparse
@@ -245,6 +246,7 @@ def main():
                 face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"],
                                             gaze_smoother=gaze_smoother, eye_validator=eye_validator,
                                             image=frame)
+                face["eyes"]["estimate"] = estimate_gaze(face["eyes"]) #using the gaze estimate angie made
                 faces.append(face)
             tracking = tracking_status(faces[0] if faces else None)
             emit({"type": "frame", "t": ts, "wall": wall, "capture_fps": capture_fps, "landmark_ms": landmark_ms,

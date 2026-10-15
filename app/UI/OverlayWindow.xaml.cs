@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using app.Gaze;
+using System.Windows.Controls;
 
 namespace app.UI;
 
@@ -25,7 +26,7 @@ public partial class OverlayWindow : Window
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
 
-    private const double OverlayMargin = 10;
+    //private const double OverlayMargin = 10; commented out by eri obsolete for bubble gaze
 
     // ---- Tracker (shared, owned by App) ----
     private readonly TrackerClient _tracker = ((App)Application.Current).Tracker;
@@ -46,14 +47,15 @@ public partial class OverlayWindow : Window
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
         // text height changes (e.g. "no face" vs. full readout), so keep the bottom edge pinned
-        SizeChanged += (_, _) => PositionBottomLeft();
+        //SizeChanged += (_, _) => PositionBottomLeft();
+        //I made the overlay fullscreen for the gaze bubble so the line above is obsolete but i didn't want to delete in case we need to change things
 
         _monitor.Changed += UpdateStatusBar;
         _timeoutTimer.Tick += (_, _) => _monitor.CheckTimeout();
 
         Loaded += async (_, _) =>
         {
-            PositionBottomLeft();
+            //PositionBottomLeft();
             _timeoutTimer.Start();
             _tracker.MessageReceived += OnMessage;
             _tracker.LogReceived += OnLog;
@@ -73,13 +75,14 @@ public partial class OverlayWindow : Window
         };
     }
 
-    private void PositionBottomLeft()
-    {
-        // WorkArea excludes the taskbar, so the overlay sits just above it
-        var area = SystemParameters.WorkArea;
-        Left = area.Left + OverlayMargin;
-        Top = area.Bottom - ActualHeight - OverlayMargin;
-    }
+    // I made the overlay fullscreen for the gaze bubble and positioned it bottom left in the xaml so this function is obsolete
+    // private void PositionBottomLeft()
+    // {
+    //     // WorkArea excludes the taskbar, so the overlay sits just above it
+    //     var area = SystemParameters.WorkArea;
+    //     Left = area.Left + OverlayMargin;
+    //     Top = area.Bottom - ActualHeight - OverlayMargin;
+    // }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
@@ -112,6 +115,31 @@ public partial class OverlayWindow : Window
         _monitor.OnTrackerStopped(reason);
     }
 
+    private void UpdateGazeBubble(TrackerMessage msg)
+    {
+        var estimate = msg.Faces?.FirstOrDefault()?.Eyes?.Estimate;
+
+        if (estimate is not { Valid: true, X: double x, Y: double y })
+        {
+            GazeBubble.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        // Keep the normalized coordinates within the screen.
+        x = Math.Clamp(x, 0.0, 1.0);
+        y = Math.Clamp(y, 0.0, 1.0);
+
+        // Convert normalized coordinates into canvas pixels.
+        double left = x * GazeCanvas.ActualWidth - GazeBubble.Width / 2;
+        double top = y * GazeCanvas.ActualHeight - GazeBubble.Height / 2;
+
+        Canvas.SetLeft(GazeBubble, left);
+        Canvas.SetTop(GazeBubble, top);
+
+        GazeBubble.Visibility = Visibility.Visible;
+    }
+
+
     private void OnMessage(TrackerMessage msg)
     {
         switch (msg.Type)
@@ -128,6 +156,7 @@ public partial class OverlayWindow : Window
 
             case "frame":
                 _monitor.OnFrame(msg.Tracking);
+                UpdateGazeBubble(msg);
                 _framesInWindow++;
                 long now = _clock.ElapsedMilliseconds;
                 if (now - _fpsWindowStartMs >= 1000)

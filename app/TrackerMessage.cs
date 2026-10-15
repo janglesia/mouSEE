@@ -14,9 +14,19 @@ public record Face(double[] Box, double[][] Landmarks, Irises Irises, Pose Pose,
 public record Irises(double[] Left, double[] Right);
 public record Pose(double Yaw, double Pitch, double Roll);
 
-public record Eyes(EyeData Left, EyeData Right, GazeData Gaze);
+public record Eyes(EyeData Left, EyeData Right, GazeData Gaze, GazeEstimate? Estimate = null);
 // the tracker sends more per eye (iris_ratio, contrast, openness, blink, covered, width_px),
 // add them here when needed. the eye check wizard will, see docs/eye-calibration.md
+// i added this gaze estimate for the bubble
+public record GazeEstimate(
+    bool Valid,
+    string? Reason,
+    [property: JsonPropertyName("h_deg")] double? HDeg,
+    [property: JsonPropertyName("v_deg")] double? VDeg,
+    double? X,
+    double? Y,
+    [property: JsonPropertyName("eyes_used")] int EyesUsed
+);
 public record EyeData(EyeOffset Offset, bool Closed, double Openness = 0, bool Covered = false);
 public record EyeOffset(double H, double V);
 public record GazeRaw(double? H, double? V);
