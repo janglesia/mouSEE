@@ -166,6 +166,33 @@ class EstimateGazeTest(unittest.TestCase):
         self.assertAlmostEqual(result["h_deg"], 0.0)
         self.assertAlmostEqual(result["v_deg"], 0.0)
 
+    def test_per_eye_horizontal_baselines_correct_offsets(self):
+        params = GazeParams(left_h_baseline=0.10, right_h_baseline=-0.05)
+        target_offset = offset_for(10)
+        eyes = make_eyes(left=make_eye(h=target_offset + 0.10), right=make_eye(h=target_offset - 0.05))
+        result = estimate_gaze(eyes, params)
+        self.assertTrue(result["valid"])
+        self.assertAlmostEqual(result["left"]["h_deg"], 10.0, places=2)
+        self.assertAlmostEqual(result["right"]["h_deg"], 10.0, places=2)
+        self.assertAlmostEqual(result["h_deg"], 10.0, places=2)
+
+    def test_per_eye_vertical_baselines_correct_offsets(self):
+        params = GazeParams(left_v_baseline=0.05, right_v_baseline=-0.03)
+        target_offset = offset_for(8, K_V)
+        eyes = make_eyes(left=make_eye(v=target_offset + 0.05), right=make_eye(v=target_offset - 0.03))
+        result = estimate_gaze(eyes, params)
+        self.assertAlmostEqual(result["left"]["v_deg"], 8.0, places=2)
+        self.assertAlmostEqual(result["right"]["v_deg"], 8.0, places=2)
+        self.assertAlmostEqual(result["v_deg"], 8.0, places=2)
+
+    def test_eye_disagreement_is_reported_in_diagnostic_mode(self):
+        result = estimate_gaze(make_eyes(left=make_eye(h=0.1), right=make_eye(h=0.3)))
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["eyes_used"], 2)
+        self.assertEqual(result["reason"], "Diagnostic: eyes disagree")
+        self.assertEqual(result["confidence"], "diagnostic_both")
+        self.assertGreater(result["disagree_h_deg"], GazeParams().max_disagree_h_deg)
+
 
 class UnusableEyeTest(unittest.TestCase):
     # a wink: the open eye alone gives the estimate, the closed eye's garbage doesn't leak in
@@ -176,14 +203,14 @@ class UnusableEyeTest(unittest.TestCase):
         self.assertEqual(winked["eyes_used"], 1)
         self.assertAlmostEqual(winked["h_deg"], open_only["h_deg"])
         self.assertAlmostEqual(winked["v_deg"], open_only["v_deg"])
-        self.assertNotIn("left", winked)
+        self.assertIsNone(winked["left"])
 
     # MediaPipe makes up the numbers of a covered eye
     def test_covered_eye_is_ignored(self):
         result = estimate_gaze(make_eyes(make_eye(h=0.1), make_eye(h=0.9, covered=True)))
         self.assertEqual(result["eyes_used"], 1)
         self.assertAlmostEqual(result["h_deg"], math.degrees(eye_angle(0.1, K_H)), places=2)
-        self.assertNotIn("right", result)
+        self.assertIsNone(result["right"])
 
     # the validator removed one eye as a glitch, the other one is enough
     def test_missing_eye_is_fine(self):
@@ -348,7 +375,7 @@ class EndToEndTest(unittest.TestCase):
         eyes = extract_eyes(build_landmarks(0.03, 0.0), 1000, 1000, blend)
         result = estimate_gaze(eyes)
         self.assertEqual(result["eyes_used"], 1)
-        self.assertNotIn("left", result)
+        self.assertIsNone(result["left"])
 
 
 if __name__ == "__main__":

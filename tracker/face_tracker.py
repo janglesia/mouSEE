@@ -44,6 +44,11 @@ import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
+#logging shi
+import csv
+import os
+import time
+
 DEFAULT_MODEL = Path(__file__).with_name("face_landmarker.task")
 
 # Iris center landmarks (only present in the 478-point model)
@@ -59,6 +64,68 @@ def emit(obj):
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
 
+def log_gaze_diagnostics(gaze, eyes=None, filepath="gaze_diagnostics.csv"):
+    """Append gaze diagnostics to a CSV file."""
+    if not gaze:
+        return
+
+    eyes = eyes or {}
+
+    left_offset = (eyes.get("left") or {}).get("offset", {})
+    right_offset = (eyes.get("right") or {}).get("offset", {})
+    left = gaze.get("left") or {}
+    right = gaze.get("right") or {}
+
+    def get_value(eye, key):
+        value = eye.get(key)
+        return value if isinstance(value, (int, float)) else None
+
+    file_exists = os.path.exists(filepath)
+
+    with open(filepath, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "timestamp",
+                "valid",
+                "reason",
+                "eyes_used",
+                "left_h_deg",
+                "left_v_deg",
+                "right_h_deg",
+                "right_v_deg",
+                "disagree_h_deg",
+                "disagree_v_deg",
+                "h_deg",
+                "v_deg",
+                "left_h_offset",
+                "left_v_offset",
+                "right_h_offset",
+                "right_v_offset",
+            ],
+        )
+
+        if not file_exists:
+            writer.writeheader()
+
+        writer.writerow({
+            "timestamp": time.time(),
+            "valid": gaze.get("valid"),
+            "reason": gaze.get("reason"),
+            "eyes_used": gaze.get("eyes_used"),
+            "left_h_deg": get_value(left, "h_deg"),
+            "left_v_deg": get_value(left, "v_deg"),
+            "right_h_deg": get_value(right, "h_deg"),
+            "right_v_deg": get_value(right, "v_deg"),
+            "disagree_h_deg": gaze.get("disagree_h_deg", gaze.get("disagree_h")),
+            "disagree_v_deg": gaze.get("disagree_v_deg", gaze.get("disagree_v")),
+            "h_deg": gaze.get("h_deg"),
+            "v_deg": gaze.get("v_deg"),
+            "left_h_offset": left_offset.get("h"),
+            "left_v_offset": left_offset.get("v"),
+            "right_h_offset": right_offset.get("h"),
+            "right_v_offset": right_offset.get("v"),
+        })
 
 def head_pose(matrix):
     """Yaw/pitch/roll in degrees from MediaPipe's 4x4 face transformation matrix."""
@@ -193,6 +260,7 @@ def main():
     gaze_smoother = GazeSmoother()
     # one per eye, they remember the last good eye to catch one-frame glitches
     eye_validator = {"left": EyeValidator(), "right": EyeValidator()}
+    last_log_time = 0.0
     try:
         while preview is None or not preview.closed.is_set():
             ok, frame = cap.read()
@@ -246,7 +314,27 @@ def main():
                 face["eyes"] = extract_eyes(pts, w, h, face["blendshapes"],
                                             gaze_smoother=gaze_smoother, eye_validator=eye_validator,
                                             image=frame)
-                face["eyes"]["estimate"] = estimate_gaze(face["eyes"]) #using the gaze estimate angie made
+                if face["eyes"] is None:
+                    # Eye extraction failed for this frame. Keep the face and frame; do not crash.
+                    face["eye_extraction"] = {
+                        "ok": False,
+                        "reason": "extract_eyes_returned_none"
+                    }
+                    face["gaze_estimate"] = estimate_gaze(None)
+                else:
+                    # Eye data exists, so estimate gaze normally.
+                    face["eyes"]["estimate"] = estimate_gaze(
+                        face["eyes"]
+                    )
+                    face["eye_extraction"] = {
+                        "ok": True,
+                        "reason": None
+                    }
+                now = time.monotonic()
+
+                #if now - last_log_time >= 1.0:
+                #    log_gaze_diagnostics(face["eyes"]["estimate"], eyes=face["eyes"]) #for debugging gaze estimation
+                #    last_log_time = now
                 faces.append(face)
             tracking = tracking_status(faces[0] if faces else None)
             emit({"type": "frame", "t": ts, "wall": wall, "capture_fps": capture_fps, "landmark_ms": landmark_ms,

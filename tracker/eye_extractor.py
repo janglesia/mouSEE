@@ -251,6 +251,11 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
 
             # u = direction along the eye from left_corner to right_corner. v = perpendicular vector, vertical axis
             u = axis / eye_width
+
+            # Make both eyes use the same screen-space horizontal direction.
+            if u[0] < 0:
+                u = -u
+
             v = np.array([-u[1], u[0]])
             half_width = eye_width / 2.0
             eye_center = (left_corner + right_corner) / 2.0
@@ -612,31 +617,51 @@ def draw_eyes(view, eyes, frame_w):
 # Debugging stuff, will delete later
 def print_eye_debug(eyes):
     if eyes is None:
+        print("[EYES] No eye data", flush=True)
         return
 
-    left, right, gaze = eyes["left"], eyes["right"], eyes["gaze"]
+    left = eyes["left"]
+    right = eyes["right"]
+    gaze = eyes["gaze"]
 
     def state(eye):
-        return "CLOSED" if eye["closed"] else "OPEN  "
+        return "CLOSED" if eye.get("closed", False) else "OPEN  "
+
+    def offset_text(eye):
+        offset = eye.get("offset", {})
+        h = offset.get("h")
+        v = offset.get("v")
+
+        if h is None or v is None:
+            return "h=---   v=---"
+
+        return f"h={h:+.3f} v={v:+.3f}"
 
     if gaze["h"] is None:
-        gaze_text = "CLOSED"
+        gaze_text = "CLOSED / UNAVAILABLE"
     else:
-        gaze_text = f"{gaze['direction']:<7} h={gaze['h']:+.3f} v={gaze['v']:+.3f}"
+        gaze_text = (
+            f"{gaze['direction']:<7} "
+            f"h={gaze['h']:+.3f} v={gaze['v']:+.3f}"
+        )
 
-    left_h = left["offset"]["h"]
-    left_v = left["offset"]["v"]
-    right_h = right["offset"]["h"]
-    right_v = right["offset"]["v"]
-    binocular = gaze["binocular_error"]
-
-    if binocular["h"] is None:
+    binocular = gaze.get("binocular_error", {})
+    if binocular.get("h") is None:
         binocular_text = "-"
     else:
         binocular_text = (
             f"h={binocular['h']:.3f} "
             f"v={binocular['v']:.3f}"
         )
+
+    print(
+        f"[EYES] "
+        f"L={state(left)} ({offset_text(left)}) | "
+        f"R={state(right)} ({offset_text(right)}) | "
+        f"Gaze={gaze_text} | "
+        f"Binocular error={binocular_text}",
+        flush=True,
+    )
 
 
 def _main():

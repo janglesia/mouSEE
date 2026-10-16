@@ -63,6 +63,7 @@ mouSEE/
   tests/
     test_eye_extractor.py    tests for eye_extractor.py
     test_tracking_status.py  tests for tracking_status.py
+    test_gaze_model.py       tests for gaze_model.py
   Makefile                   shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
