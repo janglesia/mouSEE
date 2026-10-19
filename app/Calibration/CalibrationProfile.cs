@@ -32,6 +32,9 @@ public sealed record CalibrationProfile
     // what the eyes did at each nine-point target, what the gaze numbers get fitted to
     public List<GazeTargetSummary> GazeTargets { get; init; } = [];
 
+    // how Gaze was fitted to GazeTargets and how far off it still is. null if it wasn't fitted
+    public GazeFitReport? GazeFit { get; init; }
+
     // the raw frames are in their own file, CalibrationStore.RecordingFileFor(Id)
 }
 
@@ -75,4 +78,23 @@ public sealed record GazeModel
     [JsonPropertyName("center_y")] public double? CenterY { get; init; }
     [JsonPropertyName("gain_x")] public double? GainX { get; init; }
     [JsonPropertyName("gain_y")] public double? GainY { get; init; }
+
+    // leaning left/right: x moves by HeadXGain per 1.0 the face moves across the camera image, from HeadXRef
+    [JsonPropertyName("head_x_gain")] public double? HeadXGain { get; init; }
+    [JsonPropertyName("head_x_ref")] public double? HeadXRef { get; init; }
+
+    // up/down: y = YConst + YOpenness * lid openness + YIris * vertical iris offset (both eyes averaged)
+    [JsonPropertyName("y_const")] public double? YConst { get; init; }
+    [JsonPropertyName("y_openness")] public double? YOpenness { get; init; }
+    [JsonPropertyName("y_iris")] public double? YIris { get; init; }
+
+    // looking down squeezes left/right: x gets XSqueeze * tan(angle) * (lid openness - OpennessRef)
+    [JsonPropertyName("x_squeeze")] public double? XSqueeze { get; init; }
+    [JsonPropertyName("openness_ref")] public double? OpennessRef { get; init; }
+
+    // from the head step: leaning also shrinks left/right, and leaning and tilting move up/down (see gaze_model.py)
+    [JsonPropertyName("head_x_shrink")] public double? HeadXShrink { get; init; }
+    [JsonPropertyName("head_y_pitch")] public double? HeadYPitch { get; init; }
+    [JsonPropertyName("head_y_lean")] public double? HeadYLean { get; init; }
+    [JsonPropertyName("pitch_ref")] public double? PitchRef { get; init; }
 }

@@ -130,6 +130,16 @@ public sealed class CalibrationStore
         File.Move(tmp, path, overwrite: true);
     }
 
+    /// <summary>Saves an accuracy test in tests/, named by when it was done. Returns the file.</summary>
+    public string SaveTest(AccuracyTestFile test)
+    {
+        string folder = Path.Combine(Folder, "tests");
+        Directory.CreateDirectory(folder);
+        string path = Path.Combine(folder, test.Report.MadeAt.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture) + ".json");
+        File.WriteAllText(path, JsonSerializer.Serialize(test, RecordingJson));
+        return path;
+    }
+
     /// <summary>A calibration's raw frames, null if there are none (made before recordings were saved, or unreadable).</summary>
     public CalibrationRecording? LoadRecording(string id)
     {

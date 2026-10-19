@@ -28,6 +28,7 @@ Open it with **Ctrl+Alt+C** (from any program) or **c** in the camera window.
 - the list shows every saved calibration, newest used first, with when it was made. The one in use says IN USE
 - **Use this one** (or double-click) switches to the selected one
 - **Delete** deletes the selected one, after asking
+- **Test accuracy** opens the accuracy test with the calibration in use, see [Testing accuracy](#testing-accuracy)
 - **New calibration** starts a new one (eye check, then the nine-point screen), it's saved and used once the eye check is done
 - if a calibration was made on a screen with a different size, it says so. It still works but won't line up
 
@@ -55,7 +56,7 @@ The defaults are the values built into the tracker (`eye_extractor.py`, `trackin
 | `REST_PITCH`, `REST_YAW` | 0°, 0° | your head angle when sitting normally, head turns are measured from here |
 | `MAX_PITCH`, `MAX_YAW` | 30°, 35° | turning your head further than this from resting counts as turned away |
 | `COVERED_CONTRAST` | 0.15 | an eye counts as covered when there's almost no contrast in it. Never tuned, it would need a hand over the eye |
-| gaze (`k_h`, `center_x`...) | see [GEOMETRIC-GAZE-ESTIMATION.md](GEOMETRIC-GAZE-ESTIMATION.md) | where on the screen you're looking. Not fitted yet |
+| gaze (`k_h`, `center_x`...) | see [GEOMETRIC-GAZE-ESTIMATION.md](GEOMETRIC-GAZE-ESTIMATION.md) | where on the screen you're looking. Fitted to the nine-point targets: left/right, leaning and up/down |
 
 ### The calibration file
 
@@ -158,7 +159,8 @@ Shortened, the real one has every value, step and target:
 | `eyeCheck.check` | the check round: the share of frames the tracker got right per instruction, and if it passed (90% needed) |
 | `eyeCheck.warnings` | the eyes are small in the image, the camera is slow, a step was left out... |
 | `eyeCheck.decision` | what was done with it: used, or the closed eye values kept at their defaults |
-| `gazeTargets` | the nine-point screen: per target where it was (0-1), how many frames, how many were usable (face found, both eyes open and not covered) and the spread of each eye's iris position (`leftH`, `leftV`, `rightH`, `rightV`) and of the head angle. This is what the gaze numbers get fitted to |
+| `gazeTargets` | the nine-point screen: per target where it was (0-1), whether it was the lean target (`moveHead`), where the face was in the camera image (`faceX`, `faceW`), the lid openness and vertical iris offset (`openness`, `offsetV`, both eyes averaged), how many frames, how many were usable (face found, both eyes open and not covered) and the spread of each eye's iris position (`leftH`, `leftV`, `rightH`, `rightV`) and of the head angle. This is what the gaze numbers get fitted to |
+| `gazeFit` | how the left/right gaze numbers were fitted to `gazeTargets`: the numbers, how far off each target still is (`targets`, as a share of the screen width), the average and worst error, the error on targets it wasn't fitted on (`leaveOneOutError`), what the default numbers got (`defaultMeanError`), and an `explanation`. Up/down: `yFitted`, `yConst`, `yOpenness`, `yIris`, the errors (`yMeanError`, `yMaxError`, `yLeaveOneOutError`, `yDefaultMeanError`, as a share of the screen height), `yTargets` and `yExplanation`. `version`: which version of the fit made it. And the leaning correction: `headFitted`, `headXGain`, `headXRef`, how far the face moved while leaning (`leanRange`), the error while leaning without and with it (`leanErrorBefore`, `leanErrorAfter`) and `headExplanation` |
 
 The `gaze` names are `k_h`, `k_v`, `left_h_baseline`, `left_v_baseline`, `right_h_baseline`, `right_v_baseline`, `center_x`, `center_y`, `gain_x`, `gain_y`. What they mean is in [GEOMETRIC-GAZE-ESTIMATION.md](GEOMETRIC-GAZE-ESTIMATION.md).
 
@@ -184,12 +186,12 @@ A file that isn't valid JSON is skipped (the others still load) and left where i
 One frame:
 
 ```json
-{ "ms": 1533, "faceFound": true, "yaw": 2.1, "pitch": -12.4, "roll": 0.8, "captureFps": 30,
+{ "ms": 1533, "faceFound": true, "yaw": 2.1, "pitch": -12.4, "roll": 0.8, "captureFps": 30, "faceX": 0.47, "faceY": 0.41, "faceW": 0.29,
   "left":  { "irisRatio": 0.38, "contrast": 0.52, "blink": 0.04, "openness": 0.34, "widthPx": 58.5, "closed": false, "covered": false, "offsetH": -0.02, "offsetV": 0.05 },
   "right": { "irisRatio": 0.36, "contrast": 0.5, "blink": 0.05, "openness": 0.33, "widthPx": 57.9, "closed": false, "covered": false, "offsetH": -0.03, "offsetV": 0.04 } }
 ```
 
-`ms` is from the start of that step, try or target. An eye the tracker didn't find is left out.
+`ms` is from the start of that step, try or target. An eye the tracker didn't find is left out. `faceX` / `faceY` are the middle of the face in the camera image and `faceW` its width, all 0-1 (mirrored, leaning to your right makes `faceX` bigger).
 
 ## How the tracker gets it
 
@@ -209,6 +211,7 @@ make tracker ARGS="--calibration ../app/Calibration/Saved/2026-10-18_14-05-30.js
 |------|--------------|
 | `app/Calibration/CalibrationProfile.cs` | one saved calibration (`CalibrationProfile`), its gaze numbers (`GazeModel`) and eye check values (`EyeThresholds`) |
 | `app/Calibration/CalibrationReport.cs` | the report (`EyeCheckReport`, `EyeValueReport`, `StepReport`, `Spread`...), the nine-point summary (`GazeTargetSummary`) and the recording (`CalibrationRecording`) |
+| `app/Calibration/GazeFit.cs` | fitting the gaze numbers to the nine-point targets (`FitX`) and its report (`GazeFitReport`) |
 | `app/Calibration/CalibrationStore.cs` | the saved calibrations: list, add, use, update, rename, delete, and their recordings (`SaveRecording`, `LoadRecording`) |
 | `app/UI/CalibrationsWindow.xaml(.cs)` | the calibrations window, also the startup question |
 | `app/App.xaml.cs` | asks on startup, `StartCalibration()` (eye check then nine-point screen, saves what both measured), restarts the tracker when the one in use changes |
@@ -233,14 +236,59 @@ calibrations.Delete(id);
 calibrations.Changed += () => { /* something was added, picked, renamed or deleted */ };
 ```
 
-## What's left for the gaze part
+## How the gaze is fitted
 
-`App.StartGazeCalibration()` adds the gaze part when you press Accept on the nine-point screen. The eye data is already collected: while each target's ring fills, every frame is kept, and `gazeTargets` has each target's position with the median iris position of each eye, from the frames with both eyes open and not covered (with the eye check's values loaded, `closed` is tuned to the person). What's left:
+When you press Accept on the nine-point screen, `App.StartGazeCalibration()` fits the left/right and up/down numbers to the targets and the leaning correction to the lean target (`GazeFit.Fit`, app/Calibration/GazeFit.cs) and saves them in `gaze`, with the report in `gazeFit`. The tracker restarts and the bubble uses them.
 
-1. fit the `GazeParams` numbers to the 9 targets: the iris positions in `gazeTargets` against where the targets were (`x`, `y`)
-2. put them in `var gaze = new GazeModel { ... }` in `StartGazeCalibration()`, instead of the empty one
+It's the model in `estimate_gaze()` (tracker/gaze_model.py), so what the fit measures is what the bubble does: each eye's angle is `asin((h - baseline) / k_h)`, the two are averaged, and `x = center_x + gain_x * tan(angle)`.
 
-The rest (saving, switching, loading them into the tracker) already works. Since the raw frames are in the recording, a fit can also be tried on calibrations that were made before it existed.
+- **baselines**: where each iris sits when you look at the middle column. The eyes turn in a bit, so they're different for each eye (left -0.14, right +0.13 in the first recording)
+- **k_h**: tried from 0.5 to 3, keeping the one that's best on targets it wasn't fitted on. Bigger is more linear. Real eyes have fit better with a big one than with the default 0.7
+- **center_x, gain_x**: a straight line through `tan(angle)` against where the targets were
+
+Only the targets with at least 10 frames where both eyes were open count, and not the accuracy check ones. It needs at least 3 targets in at least 2 columns, otherwise the gaze stays at the defaults.
+
+The first real calibration: the default numbers put the left and right targets at -0.7 and 1.7 (way off the screen, the bubble was always further out than where you looked). Fitted, the targets land on average 3.5% of the screen width away (about 90 px on 2560), 10% at worst (bottom left, looking down changes how the eyes read), and about 4.6% on targets left out of the fit.
+
+### Leaning left and right
+
+The iris position only says where the eyes point in the head. Lean to the right and look at the same spot, and your eyes turn a little left to stay on it, so without a correction the bubble moves left. It was only right when you sat where you sat during calibration.
+
+So after the nine targets the logo goes back to the middle for 8 seconds: keep looking at it and slowly lean left and right. The logo doesn't move but the head does, so whatever the bubble would do then is caused by leaning. The fit (`GazeFit.FitHeadX`) is the slope of "how far off the bubble would be" against "how far the middle of the face moved in the camera image" (from where it was during the nine targets):
+
+```
+x = center_x + gain_x * tan(angle) + head_x_gain * (face_x - head_x_ref)
+```
+
+`face_x` is the middle of the face box in the camera image (0-1), the tracker passes it to `estimate_gaze()` every frame. `head_x_ref` is where it was during the nine targets. It isn't fitted if the face moved less than 3% of the camera image width while leaning (not enough to tell), or if the result is bigger than 6 (not leaning, probably looked away). `gazeFit` says which, and how far off the bubble was while leaning without and with the correction.
+
+Calibrations made before the lean target have no correction (`head_x_gain` 0), make a new one to get it.
+
+### Up and down
+
+The iris barely moves up and down in the tracker's numbers: the vertical offset is measured from the middle between the lids, and the lids follow the eye, so most of it cancels out (0.035 from the top row to the bottom row, against 0.8 left to right). The lids themselves move though: more open looking up, less looking down (0.34 at the top row, 0.31 in the middle, 0.27 at the bottom in the first calibration with this). So up/down is fitted from those (`GazeFit.FitY`):
+
+```
+y = y_const + y_openness * lid openness + y_iris * vertical iris offset
+```
+
+both averaged over the open eyes, a straight line through the nine targets. It needs at least 4 targets in at least 2 rows with lid openness measured, otherwise up/down stays at the defaults (`gazeFit.yExplanation` says why). Head pitch would fit sitting still slightly better but breaks when leaning (leaning changes it), so it's not used.
+
+On the first accuracy test this took the up/down error from 24% of the screen height (the defaults) to 11% sitting normally and 4% leaning left. Leaning right got worse (6% to 14%, the eyes open unevenly then), which the lean work below is about. Staring at one point the bubble shakes about 2% of the height up and down, more than left/right (0.8%), since the lids are a small number made big.
+
+### Fitting again
+
+Each fit says which version of the fit made it (`gazeFit.version`, `GazeFit.Version`). When mouSEE starts, every calibration fitted by an older version gets fitted again from its recording (`App.FitOldCalibrations`), so improvements to the fit apply to calibrations that were already made. Bump the version when the fit changes. A calibration without a recording only gets fitted if it never was.
+
+Calibrations made before the fit existed have the targets but empty gaze numbers, those get fitted the same way.
+
+### What's left
+
+- **looking down changes left/right**: the bottom row is squeezed together. A term for it (iris position times lid openness) took left/right from 4.4% to 3.4% on the accuracy test
+- **leaning shrinks the mapping too**: not just shifts it. A lean step with dots on the left and right (not just the middle) would let the fit learn that, about 11% to 7% leaning right on the accuracy test
+- **leaning closer or further**: the face gets bigger or smaller in the image, which changes how far the eyes turn for the same spot. The face width is recorded (`faceW`), it could be fitted with a lean forward and back step
+- **turning the head**: head yaw is recorded too but not used, while leaning people also turn their head a bit, which the leaning correction partly takes in
+- **jitter**: staring at one point, the bubble still moves from frame to frame, about 1% of the screen width left/right and 2% of the height up/down. That's the smoothing task (filter the bubble's position)
 
 ## Answering by looking
 
@@ -254,3 +302,14 @@ Every question in the calibration can be answered without hands: the startup que
 - while the steps or the nine-point targets run it's off, looking around is part of those
 
 `LookChoice` (app/Gaze) is the logic, `ChoicePrompt` (app/UI) shows it and can be put in any window: `Choice.Ask("Begin", "Cancel")` and handle `Choice.Chosen`.
+
+## Testing accuracy
+
+The accuracy test checks how close the bubble lands to where you look with the calibration in use. Open it with **Test accuracy** in the calibrations window, or `make run ARGS="--accuracy-test"`. Begin and close by looking right or left, like the other screens.
+
+- dots show up one by one: 15 sitting normally (5 columns by 3 rows, so points between the calibration's 3 columns are tested too), then 3 leaning left and 3 leaning right. About a minute
+- each dot: 0.8 s for the eyes to get there, then 1.5 s where the tracker's bubble position is recorded
+- the bubble isn't shown while it runs, otherwise you'd follow it instead of the dot
+- at the end every dot is drawn as a ring, with a line to a filled dot where the bubble landed (median of its frames). Yellow sitting normally, blue leaning left, pink leaning right. Above it: how far off left/right it was per way of sitting, which side it leans to, and the error per column
+
+Saved in `app/Calibration/Saved/tests/<date>.json` (one line), with the report and every frame of every dot (same frames as a recording, plus `estimateX` / `estimateY`, where the bubble was). That's what to look at to decide what to improve: whether more calibration points would help, whether the leaning correction holds up, whether one side needs its own fit. The numbers are in `app/Calibration/AccuracyTest.cs`.

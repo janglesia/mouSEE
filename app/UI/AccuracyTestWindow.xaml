@@ -1,0 +1,63 @@
+<Window x:Class="app.UI.AccuracyTestWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:app.UI"
+        Title="mouSEE accuracy test"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="Manual"
+        Background="#101010"
+        FontFamily="Segoe UI"
+        KeyDown="Window_KeyDown">
+    <Grid x:Name="Root">
+        <!-- the point to look at, and at the end every point with a line to where the bubble landed -->
+        <Canvas x:Name="Board" IsHitTestVisible="False">
+            <Ellipse x:Name="Dot" Width="26" Height="26" Fill="#F7D060" Visibility="Collapsed" />
+        </Canvas>
+
+        <StackPanel x:Name="IntroPanel" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="640">
+            <TextBlock Text="Accuracy test" Foreground="White" FontSize="34" FontWeight="SemiBold" />
+            <TextBlock Foreground="#C0C0C0" FontSize="16" TextWrapping="Wrap" Margin="0,12,0,0"
+                       Text="Dots show up all over the screen. Look at each one until the next shows up. First sitting normally, then leaning left, then leaning right. It takes about a minute. The bubble is hidden so you don't follow it, at the end you see where it would have been." />
+            <TextBlock x:Name="CalibrationText" Foreground="#8A8A8A" FontSize="13" TextWrapping="Wrap" Margin="0,12,0,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
+                <Button Content="Begin" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="BeginButton_Click" />
+                <Button Content="Close" Style="{StaticResource DarkButton}" Click="CloseButton_Click" />
+            </StackPanel>
+        </StackPanel>
+
+        <TextBlock x:Name="PhaseText" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Foreground="White" FontSize="34" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="900" />
+
+        <TextBlock x:Name="ProgressText" Foreground="#5A5A5A" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                   Margin="0,0,0,24" />
+
+        <!-- results: the summary over the drawing -->
+        <Border x:Name="ResultPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0"
+                Background="#E0101010" CornerRadius="6" Padding="20,14" MaxWidth="1100">
+            <StackPanel>
+                <TextBlock Text="Where the bubble landed" Foreground="White" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock Foreground="#A0A0A0" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,8"
+                           Text="Rings: the dots you looked at. Filled dots: where the bubble landed, joined by a line. Yellow sitting normally, blue leaning left, pink leaning right." />
+                <ItemsControl x:Name="SummaryList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Foreground="#D0D0D0" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,4" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="SavedText" Foreground="#8A8A8A" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="Run it again" Style="{StaticResource DarkButton}" Margin="0,0,10,0" Click="BeginButton_Click" />
+                    <Button Content="Close" Style="{StaticResource PrimaryButton}" Click="CloseButton_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <local:ChoicePrompt x:Name="Choice" VerticalAlignment="Bottom" Margin="32,0,32,48" Visibility="Collapsed" />
+
+        <TextBlock Text="Esc to close" Foreground="#5A5A5A" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,12" />
+    </Grid>
+</Window>

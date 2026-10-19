@@ -83,6 +83,9 @@ dotnet run -- --preview --camera 1
 # Start a new calibration straight away (eye check, then the nine-point screen)
 dotnet run -- --calibrate
 
+# Open the accuracy test (where the bubble lands for dots all over the screen)
+dotnet run -- --accuracy-test
+
 # Open only the nine-point calibration screen instead of the overlay
 dotnet run -- --calibration-preview
 
@@ -93,7 +96,7 @@ dotnet build
 dotnet clean
 ```
 
-The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only options the app itself uses are `--calibrate` and `--calibration-preview`, it doesn't pass those on.
+The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only options the app itself uses are `--calibrate`, `--calibration-preview` and `--accuracy-test`, it doesn't pass those on.
 
 ## Tracker options
 

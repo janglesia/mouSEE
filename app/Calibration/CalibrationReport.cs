@@ -138,6 +138,10 @@ public sealed record GazeTargetSummary
     public double X { get; init; }
     public double Y { get; init; }
     public bool IsValidation { get; init; }
+    // looked at while leaning left and right, see CalibrationTarget.MoveHead
+    public bool MoveHead { get; init; }
+    // the head step: how the head was held (HeadPose), null sitting normally
+    public string? Pose { get; init; }
     public int Frames { get; init; }
     // frames with the face found and both eyes open and not covered, the ones a gaze fit should use
     public int UsableFrames { get; init; }
@@ -147,6 +151,14 @@ public sealed record GazeTargetSummary
     public Spread? RightV { get; init; }
     public Spread? Pitch { get; init; }
     public Spread? Yaw { get; init; }
+    // where the face was in the camera image (middle, 0-1) and how wide (0-1), see FrameSample
+    public Spread? FaceX { get; init; }
+    public Spread? FaceY { get; init; }
+    public double? FaceW { get; init; }
+    // lid openness, both eyes averaged per frame: the lids follow the eyes up and down, so it's what up/down is fitted from
+    public Spread? Openness { get; init; }
+    // vertical iris offset, both eyes averaged per frame
+    public Spread? OffsetV { get; init; }
 
     public static bool Usable(FrameSample f) =>
         f.FaceFound && f.Left is { Closed: false, Covered: false } && f.Right is { Closed: false, Covered: false };
@@ -160,6 +172,8 @@ public sealed record GazeTargetSummary
             X = target.NormalizedX,
             Y = target.NormalizedY,
             IsValidation = target.IsValidation,
+            MoveHead = target.MoveHead,
+            Pose = target.Pose,
             Frames = frames.Count,
             UsableFrames = usable.Count,
             LeftH = Spread.Of(usable.Select(f => (double?)f.Left!.OffsetH)),
@@ -168,6 +182,11 @@ public sealed record GazeTargetSummary
             RightV = Spread.Of(usable.Select(f => (double?)f.Right!.OffsetV)),
             Pitch = Spread.Of(usable.Select(f => (double?)f.Pitch)),
             Yaw = Spread.Of(usable.Select(f => (double?)f.Yaw)),
+            FaceX = Spread.Of(usable.Select(f => (double?)f.FaceX)),
+            FaceY = Spread.Of(usable.Select(f => (double?)f.FaceY)),
+            FaceW = Spread.Of(usable.Select(f => (double?)f.FaceW))?.Median,
+            Openness = Spread.Of(usable.Select(f => (double?)(f.Left!.Openness + f.Right!.Openness) / 2)),
+            OffsetV = Spread.Of(usable.Select(f => (double?)(f.Left!.OffsetV + f.Right!.OffsetV) / 2)),
         };
     }
 }
@@ -179,7 +198,8 @@ public sealed record StepRecording(string Step, int Try, bool Passed, string? Pr
 
 public sealed record TrialRecording(string Trial, List<FrameSample> Frames);
 
-public sealed record TargetRecording(int Index, double X, double Y, bool IsValidation, List<FrameSample> Frames);
+public sealed record TargetRecording(int Index, double X, double Y, bool IsValidation, List<FrameSample> Frames, bool MoveHead = false,
+                                     string? Pose = null);
 
 public sealed record CalibrationRecording
 {

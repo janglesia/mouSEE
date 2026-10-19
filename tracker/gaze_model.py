@@ -51,6 +51,36 @@ class GazeParams:
     gain_x: float = GAIN_X
     gain_y: float = GAIN_Y
 
+    # Leaning left or right moves the head, and the eyes turn the other way to stay on the same spot, so the same
+    # iris position means a different place on the screen. x moves by head_x_gain for every 1.0 the middle of the
+    # face moves across the camera image (0-1, mirrored like everything else), from head_x_ref, where it was during
+    # calibration. 0 = no correction (not calibrated, or calibrated before this existed)
+    head_x_gain: float = 0.0
+    head_x_ref: float = 0.5
+
+    # Up/down fitted by calibration: y = y_const + y_openness * lid openness + y_iris * vertical iris offset, both
+    # averaged over the usable eyes. The iris barely moves up and down in v (it's measured from the middle of the lids,
+    # which follow the eye), but the lids do: more open looking up, less looking down. When y_openness and y_iris are
+    # both 0 (not calibrated) y comes from the angle model below (k_v, gain_y) like before
+    y_const: float = 0.5
+    y_openness: float = 0.0
+    y_iris: float = 0.0
+
+    # Looking down, the iris moves less from side to side (the lid comes down over it), so left/right gets squeezed
+    # together at the bottom of the screen. x gets x_squeeze * tan(angle) * (lid openness - openness_ref) on top,
+    # openness_ref being the openness during calibration. 0 = off
+    x_squeeze: float = 0.0
+    openness_ref: float = 0.3
+
+    # The head step of the calibration (leaning and tilting while looking at dots). Leaning doesn't only shift x
+    # (head_x_gain), it shrinks it too: + head_x_shrink * tan(angle) * |how far the face moved|. And for up/down,
+    # + head_y_pitch * (head pitch - pitch_ref) + head_y_lean * |how far the face moved|. Only with a fitted up/down.
+    # All 0 = off
+    head_x_shrink: float = 0.0
+    head_y_pitch: float = 0.0
+    head_y_lean: float = 0.0
+    pitch_ref: float = 0.0
+
     max_disagree_h_deg: float = MAX_DISAGREE_H_DEG
     max_disagree_v_deg: float = MAX_DISAGREE_V_DEG
 
@@ -128,6 +158,17 @@ def _validate_params(params):
         params.left_v_baseline,
         params.right_h_baseline,
         params.right_v_baseline,
+        params.head_x_gain,
+        params.head_x_ref,
+        params.y_const,
+        params.y_openness,
+        params.y_iris,
+        params.x_squeeze,
+        params.openness_ref,
+        params.head_x_shrink,
+        params.head_y_pitch,
+        params.head_y_lean,
+        params.pitch_ref,
     )
 
     if not all(_finite_number(value) for value in finite_values):
@@ -186,10 +227,41 @@ def _usable_offsets(eyes):
     return found
 
 
-def _screen_position(h, v, params):
-    """Convert gaze angles into normalized screen coordinates."""
-    x = params.center_x + params.gain_x * math.tan(h)
-    y = params.center_y + params.gain_y * math.tan(v)
+def _mean_openness(eyes, offsets):
+    """Lid openness averaged over the usable eyes, None if none of them has one."""
+    openness = [eyes[name].get("openness") for name, _, _ in offsets]
+    openness = [float(o) for o in openness if _finite_number(o)]
+    return sum(openness) / len(openness) if openness else None
+
+
+def _fitted_y(offsets, openness, params):
+    """y from the calibrated up/down numbers (y_const, y_openness, y_iris), from the usable eyes' lid openness and
+    vertical iris offset. None if there are no such numbers, or no openness to use."""
+    if params.y_openness == 0.0 and params.y_iris == 0.0:
+        return None
+    if openness is None:
+        return None
+    v = sum(v for _, _, v in offsets) / len(offsets)
+    return params.y_const + params.y_openness * openness + params.y_iris * v
+
+
+def _screen_position(h, v, params, face_x=None, fitted_y=None, openness=None, face_pitch=None):
+    """Convert gaze angles into normalized screen coordinates. face_x: the middle of the face in the camera
+    image (0-1), face_pitch: the head pitch in degrees, for the head corrections (head_*). None leaves them out.
+    fitted_y: y from _fitted_y, used instead of the angle when there is one. openness: the usable eyes'
+    average lid openness, for the looking down squeeze (x_squeeze)."""
+    t = math.tan(h)
+    x = params.center_x + params.gain_x * t
+    y = params.center_y + params.gain_y * math.tan(v) if fitted_y is None else fitted_y
+    if openness is not None:
+        x += params.x_squeeze * t * (openness - params.openness_ref)
+    if _finite_number(face_x):
+        moved = float(face_x) - params.head_x_ref
+        x += params.head_x_gain * moved + params.head_x_shrink * t * abs(moved)
+        if fitted_y is not None:
+            y += params.head_y_lean * abs(moved)
+    if fitted_y is not None and _finite_number(face_pitch):
+        y += params.head_y_pitch * (float(face_pitch) - params.pitch_ref)
 
     return _r(x), _r(y)
 
@@ -214,9 +286,12 @@ def _eye_diagnostics(per_eye):
 # MAIN GAZE ESTIMATION
 # ---------------------------------------------------------
 
-def estimate_gaze(eyes, params=None):
+def estimate_gaze(eyes, params=None, face_x=None, face_pitch=None):
     """
     Estimate gaze direction and normalized screen position.
+
+    face_x: the middle of the face in the camera image (0-1, faces[0].box), face_pitch: the head pitch (faces[0].pose),
+    for the head corrections (GazeParams.head_*). None leaves them out.
 
     Returns a dictionary containing:
         valid      bool
@@ -283,6 +358,8 @@ def estimate_gaze(eyes, params=None):
         return _invalid("Could not convert eye offsets to angles")
 
     diagnostics = _eye_diagnostics(per_eye)
+    openness = _mean_openness(eyes, offsets)
+    fitted_y = _fitted_y(offsets, openness, params)
 
     # -----------------------------------------------------
     # SINGLE-EYE ESTIMATE
@@ -291,7 +368,7 @@ def estimate_gaze(eyes, params=None):
         name = next(iter(per_eye))
         h, v = per_eye[name]
 
-        x, y = _screen_position(h, v, params)
+        x, y = _screen_position(h, v, params, face_x, fitted_y, openness, face_pitch)
 
         return {
             "valid": True,
@@ -349,7 +426,7 @@ def estimate_gaze(eyes, params=None):
     h = (left_h + right_h) / 2.0
     v = (left_v + right_v) / 2.0
 
-    x, y = _screen_position(h, v, params)
+    x, y = _screen_position(h, v, params, face_x, fitted_y, openness, face_pitch)
 
     return {
         "valid": True,

@@ -1,5 +1,6 @@
 using System.Windows;
 using app.Calibration;
+using app.Gaze;
 using app.Settings;
 
 namespace app;
@@ -15,14 +16,23 @@ public partial class App : Application
     // Saved calibrations in app/Calibration/Saved/. The last one used is the one in use
     public CalibrationStore Calibrations { get; } = new();
 
+    // the re-center: how far off the bubble was looking at the middle of the screen the last time (subtracted from
+    // every bubble position), and where the head was then. Reset when the calibration in use changes
+    public GazeOffset Offset { get; private set; } = GazeOffset.None;
+    public HeadPosition? RecenteredAt { get; private set; }
+    public event Action? OffsetChanged;
+
     // options only the app uses, face_tracker.py rejects flags it doesn't know.
-    // --calibration-preview opens only the nine-point screen, --calibrate starts a whole calibration
-    private static readonly string[] AppOnlyOptions = ["--calibration-preview", "--calibrate"];
+    // --calibration-preview opens only the nine-point screen, --calibrate starts a whole calibration,
+    // --accuracy-test opens the accuracy test
+    private static readonly string[] AppOnlyOptions = ["--calibration-preview", "--calibrate", "--accuracy-test"];
 
     // the command line minus AppOnlyOptions
     private string[] _commandLine = [];
     // what the tracker was started with, to know when it needs a restart. null until it's started
     private string[]? _trackerArgs;
+    // and the numbers in the calibration it was started with: the file stays the same when they change
+    private (GazeModel? Gaze, EyeThresholds? Eyes) _trackerValues;
     // while the eye check tries out its values, the tracker uses this file instead of the calibration in use
     private string? _trackerCalibrationOverride;
 
@@ -39,7 +49,12 @@ public partial class App : Application
 
         // the tracker only reads its options when it starts
         Settings.Changed += async (_, _) => await RestartTrackerIfNeededAsync();
-        Calibrations.Changed += async () => await RestartTrackerIfNeededAsync();
+        Calibrations.Changed += async () =>
+        {
+            // a re-center belongs to the calibration it was made with
+            if (Calibrations.Active?.Id != _offsetCalibrationId) SetOffset(GazeOffset.None, null);
+            await RestartTrackerIfNeededAsync();
+        };
 
         // q, p and c pressed in the camera window
         Tracker.MessageReceived += msg =>
@@ -50,8 +65,11 @@ public partial class App : Application
                 case "q": Shutdown(); break;
                 case "p": TogglePause(); break;
                 case "c": ShowCalibrations(); break;
+                case "r": StartRecenter(); break;
             }
         };
+
+        FitOldCalibrations();
 
         if (Has("--calibration-preview"))
         {
@@ -64,15 +82,24 @@ public partial class App : Application
 
         if (Has("--calibrate"))
             StartCalibration();
+        else if (Has("--accuracy-test"))
+            StartAccuracyTest();
         // first time (or every time until there is one): offer to calibrate, otherwise default values are used
         else if (Calibrations.Active is null && Settings.Current.Calibration.AskWhenMissing)
             ShowCalibrations();
+        // the way you sit changes a bit from one day to the next, a quick re-center takes care of most of it
+        else if (Calibrations.Active is not null && Settings.Current.Calibration.RecenterOnStart)
+            StartRecenter();
     }
 
     /// <summary>Starts the shared tracker with the current settings. Does nothing if it's already running.</summary>
     public Task StartTrackerAsync()
     {
-        _trackerArgs ??= BuildTrackerArgs();
+        if (_trackerArgs is null)
+        {
+            _trackerArgs = BuildTrackerArgs();
+            _trackerValues = TrackerValues();
+        }
         return Tracker.RunAsync(_trackerArgs);
     }
 
@@ -138,12 +165,15 @@ public partial class App : Application
         {
             var summaries = targets.Select(t => GazeTargetSummary.Of(t.Target, t.Frames)).ToList();
             var frames = targets.Select(t => new TargetRecording(t.Target.Index, t.Target.NormalizedX, t.Target.NormalizedY,
-                                                                 t.Target.IsValidation, t.Frames)).ToList();
-            // the gaze numbers go here once calibration works them out from the targets. empty means the tracker's defaults
-            var gaze = new GazeModel();
+                                                                 t.Target.IsValidation, t.Frames, t.Target.MoveHead, t.Target.Pose)).ToList();
+            // the gaze numbers fitted to the targets (left/right, and leaning left/right from the lean target).
+            // none if there weren't enough targets
+            var lean = targets.FirstOrDefault(t => t.Target.MoveHead);
+            var fit = GazeFit.Fit(summaries, SystemParameters.PrimaryScreenWidth, lean.Frames, lean.Target?.NormalizedX ?? 0.5);
+            var gaze = fit?.Model ?? new GazeModel();
             if (id is not null)
             {
-                Calibrations.Update(id, p => p with { Gaze = gaze, GazeTargets = summaries });
+                Calibrations.Update(id, p => p with { Gaze = gaze, GazeTargets = summaries, GazeFit = fit?.Report });
                 SaveRecording(id, (Calibrations.LoadRecording(id) ?? new CalibrationRecording()) with { Gaze = frames });
             }
             else
@@ -154,12 +184,38 @@ public partial class App : Application
                     ScreenHeight = SystemParameters.PrimaryScreenHeight,
                     Gaze = gaze,
                     GazeTargets = summaries,
+                    GazeFit = fit?.Report,
                 });
                 SaveRecording(saved.Id, new CalibrationRecording { Gaze = frames });
             }
         };
         ShowCalibrationWindow(window);
         return window;
+    }
+
+    // calibrations fitted by an older version of the fit (GazeFit.Version), or not at all, get fitted again from their
+    // recording, so improvements to the fit work without calibrating again. without a recording, only the old summaries
+    // are there, and only one that was never fitted gets fitted from them
+    private void FitOldCalibrations()
+    {
+        foreach (var p in Calibrations.All.ToList())
+        {
+            if ((p.GazeFit?.Version ?? 0) >= GazeFit.Version) continue;
+
+            var recorded = Calibrations.LoadRecording(p.Id)?.Gaze ?? [];
+            if (recorded.Count > 0)
+            {
+                var targets = recorded.Select(r => GazeTargetSummary.Of(
+                    new CalibrationTarget(r.Index, r.X, r.Y, r.IsValidation, r.MoveHead, r.Pose), r.Frames)).ToList();
+                var lean = recorded.FirstOrDefault(r => r.MoveHead);
+                if (GazeFit.Fit(targets, p.ScreenWidth, lean?.Frames, lean?.X ?? 0.5) is { } fit)
+                    Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeTargets = targets, GazeFit = fit.Report });
+            }
+            else if (p.GazeTargets.Count > 0 && p.Gaze == new GazeModel() && GazeFit.Fit(p.GazeTargets, p.ScreenWidth) is { } fit)
+            {
+                Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeFit = fit.Report });
+            }
+        }
     }
 
     // the raw frames are nice to have, not being able to write them mustn't lose the calibration itself
@@ -193,6 +249,39 @@ public partial class App : Application
         window.Show();
     }
 
+    /// <summary>Checks how close the bubble lands to where you look with the calibration in use, see AccuracyTestWindow.</summary>
+    /// <summary>Look at a dot in the middle for a moment, see RecenterWindow. Does nothing while another calibration window is open.</summary>
+    public void StartRecenter()
+    {
+        if (_calibrationWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        ShowCalibrationWindow(new UI.RecenterWindow());
+    }
+
+    /// <summary>The re-center's result: the shift for every bubble position and where the head was.</summary>
+    public void SetOffset(GazeOffset offset, HeadPosition? at)
+    {
+        Offset = offset;
+        RecenteredAt = at;
+        _offsetCalibrationId = Calibrations.Active?.Id;
+        OffsetChanged?.Invoke();
+    }
+
+    private string? _offsetCalibrationId;
+
+    public void StartAccuracyTest()
+    {
+        if (_calibrationWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        ShowCalibrationWindow(new UI.AccuracyTestWindow());
+    }
+
     /// <summary>The list of saved calibrations, to switch, delete or make a new one.</summary>
     public void ShowCalibrations()
     {
@@ -211,12 +300,18 @@ public partial class App : Application
     private string[] BuildTrackerArgs() =>
         TrackerArgs.Build(Settings.Current, _trackerCalibrationOverride ?? Calibrations.ActiveFile, _commandLine);
 
+    // the tracker reads the calibration file when it starts, so new numbers in it need a restart too
+    private (GazeModel?, EyeThresholds?) TrackerValues() =>
+        _trackerCalibrationOverride is not null ? (null, null) : (Calibrations.Active?.Gaze, Calibrations.Active?.Eyes);
+
     private async Task RestartTrackerIfNeededAsync()
     {
         if (_trackerArgs is null) return; // not started yet, it'll start with the new ones
         var args = BuildTrackerArgs();
-        if (args.SequenceEqual(_trackerArgs)) return;
+        var values = TrackerValues();
+        if (args.SequenceEqual(_trackerArgs) && values == _trackerValues) return;
         _trackerArgs = args;
+        _trackerValues = values;
         await Tracker.RestartAsync(args);
     }
 

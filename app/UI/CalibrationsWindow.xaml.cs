@@ -59,7 +59,7 @@ public partial class CalibrationsWindow : Window
         NewButton.Content = none ? "Calibrate now" : "New calibration";
         CloseButton.Content = none ? "Use default values" : "Close";
         ProfileList.Visibility = none ? Visibility.Collapsed : Visibility.Visible;
-        UseButton.Visibility = DeleteButton.Visibility = none ? Visibility.Collapsed : Visibility.Visible;
+        UseButton.Visibility = DeleteButton.Visibility = TestButton.Visibility = none ? Visibility.Collapsed : Visibility.Visible;
         // only matters while there's none, once one is saved it never asks
         AskCheckBox.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
         AskCheckBox.IsChecked = _app.Settings.Current.Calibration.AskWhenMissing;
@@ -116,6 +116,12 @@ public partial class CalibrationsWindow : Window
     }
 
     private void NewButton_Click(object sender, RoutedEventArgs e) => StartNew();
+
+    private void TestButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        _app.StartAccuracyTest();
+    }
 
     private void StartNew()
     {

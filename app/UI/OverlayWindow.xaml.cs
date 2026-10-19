@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using app.Calibration;
 using app.Gaze;
 using app.Settings;
 using System.Windows.Controls;
@@ -18,8 +19,8 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -39,6 +40,9 @@ public partial class OverlayWindow : Window
 
     // ---- Tracking status bar ----
     private readonly TrackingMonitor _monitor;
+    // where to sit: move back toward where calibration was, or re-center
+    private readonly PositionGuide _guide = new();
+    private readonly App _app = (App)Application.Current;
     // frames stopping can't be noticed from OnMessage, so check on a timer
     private readonly DispatcherTimer _timeoutTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private static readonly Brush Green = Frozen("#2E7D32"), Orange = Frozen("#EF6C00"),
@@ -58,6 +62,11 @@ public partial class OverlayWindow : Window
         ApplyOverlaySettings(_settings.Current.Overlay);
         _timeoutTimer.Tick += (_, _) => _monitor.CheckTimeout();
         _settings.Changed += OnSettingsChanged;
+        _guide.Changed += UpdateGuide;
+        _guide.Calibrated = HeadPosition.Of(_app.Calibrations.Active);
+        _guide.LastRecenter = _app.RecenteredAt;
+        _app.OffsetChanged += OnRecentered;
+        _app.Calibrations.Changed += OnCalibrationsChanged;
 
         Loaded += async (_, _) =>
         {
@@ -74,6 +83,8 @@ public partial class OverlayWindow : Window
         {
             _timeoutTimer.Stop();
             _settings.Changed -= OnSettingsChanged;
+            _app.OffsetChanged -= OnRecentered;
+            _app.Calibrations.Changed -= OnCalibrationsChanged;
             _tracker.MessageReceived -= OnMessage;
             _tracker.LogReceived -= OnLog;
             _tracker.Failed -= OnFailed;
@@ -81,6 +92,7 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_QUIT);
             UnregisterHotKey(hwnd, HOTKEY_PAUSE);
             UnregisterHotKey(hwnd, HOTKEY_CALIBRATIONS);
+            UnregisterHotKey(hwnd, HOTKEY_RECENTER);
         };
     }
 
@@ -101,12 +113,13 @@ public partial class OverlayWindow : Window
         SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
 
         // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus),
-        // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations. global, so they work
-        // from any app. q, p and c in the camera window do the same, see App.xaml.cs
+        // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations, Ctrl+Alt+R re-centers. global, so they
+        // work from any app. q, p, c and r in the camera window do the same, see App.xaml.cs
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         RegisterHotKey(hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, VK_Q);
         RegisterHotKey(hwnd, HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT, VK_P);
         RegisterHotKey(hwnd, HOTKEY_CALIBRATIONS, MOD_CONTROL | MOD_ALT, VK_C);
+        RegisterHotKey(hwnd, HOTKEY_RECENTER, MOD_CONTROL | MOD_ALT, VK_R);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -126,8 +139,27 @@ public partial class OverlayWindow : Window
                 handled = true;
                 ((App)Application.Current).ShowCalibrations();
                 break;
+            case HOTKEY_RECENTER:
+                handled = true;
+                ((App)Application.Current).StartRecenter();
+                break;
         }
         return IntPtr.Zero;
+    }
+
+    private void OnRecentered() => _guide.Recentered(_app.RecenteredAt);
+
+    private void OnCalibrationsChanged() => _guide.Calibrated = HeadPosition.Of(_app.Calibrations.Active);
+
+    private void UpdateGuide()
+    {
+        string? text = _guide.MoveHint is { } move
+            ? $"{move}. Tracking works best close to where you sat during calibration."
+            : _guide.SuggestRecenter
+                ? "You moved since the last re-center. Press Ctrl+Alt+R (or r in the camera window) to re-center."
+                : null;
+        GuideText.Text = text ?? "";
+        GuideBar.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnSettingsChanged(AppSettings old, AppSettings now)
@@ -163,9 +195,10 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        // Keep the normalized coordinates within the screen.
-        x = Math.Clamp(x, 0.0, 1.0);
-        y = Math.Clamp(y, 0.0, 1.0);
+        // minus the re-center's shift, then kept within the screen
+        var offset = ((App)Application.Current).Offset;
+        x = Math.Clamp(x - offset.X, 0.0, 1.0);
+        y = Math.Clamp(y - offset.Y, 0.0, 1.0);
 
         // Convert normalized coordinates into canvas pixels.
         double left = x * GazeCanvas.ActualWidth - GazeBubble.Width / 2;
@@ -195,6 +228,7 @@ public partial class OverlayWindow : Window
             case "frame":
                 _monitor.OnFrame(msg.Tracking);
                 UpdateGazeBubble(msg);
+                _guide.OnFrame(FrameSample.From(msg, 0));
                 _framesInWindow++;
                 long now = _clock.ElapsedMilliseconds;
                 if (now - _fpsWindowStartMs >= 1000)

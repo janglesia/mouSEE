@@ -382,6 +382,68 @@ class EndToEndTest(unittest.TestCase):
         self.assertIsNone(result["left"])
 
 
+class FittedCalibrationTest(unittest.TestCase):
+    """The app fits these numbers (app/Calibration/GazeFit.cs) and expects estimate_gaze() to give exactly these x.
+    GazeFitTests.Predictions_match_the_tracker has the same numbers, change both together."""
+
+    PARAMS = GazeParams(k_h=3.0, left_h_baseline=-0.1417, right_h_baseline=0.13, center_x=0.4852, gain_x=3.5464)
+    # median iris position per eye at the nine-point targets of a real calibration, and where they were
+    TARGETS = [(-0.435, -0.322, 0.0411), (-0.133, 0.129, 0.4898), (0.291, 0.477, 0.95), (0.278, 0.484, 0.9464),
+               (-0.144, 0.104, 0.4685), (-0.441, -0.286, 0.0593), (-0.374, -0.145, 0.1843), (-0.148, 0.157, 0.4974),
+               (0.160, 0.465, 0.8637)]
+
+    def test_fitted_numbers_give_what_the_app_expects(self):
+        for left, right, expected in self.TARGETS:
+            eyes = {"left": make_eye(h=left), "right": make_eye(h=right)}
+            self.assertAlmostEqual(estimate_gaze(eyes, self.PARAMS)["x"], expected, places=3)
+
+    def test_leaning_moves_x_by_the_head_correction(self):
+        params = params_from_dict({"k_h": 3.0, "left_h_baseline": -0.1417, "right_h_baseline": 0.13, "center_x": 0.4852,
+                                   "gain_x": 3.5464, "head_x_gain": 1.5, "head_x_ref": 0.47})
+        eyes = {"left": make_eye(h=-0.133), "right": make_eye(h=0.129)}
+        at_ref = estimate_gaze(eyes, params, face_x=0.47)["x"]
+        leaned = estimate_gaze(eyes, params, face_x=0.57)["x"]
+
+        self.assertAlmostEqual(at_ref, 0.4898, places=3)  # where the face was during calibration: no change
+        self.assertAlmostEqual(leaned - at_ref, 0.15, places=3)  # 1.5 per 1.0 across the image, the face moved 0.1
+        # without knowing where the face is, nothing is corrected
+        self.assertAlmostEqual(estimate_gaze(eyes, params)["x"], at_ref, places=3)
+
+    def test_fitted_up_down_comes_from_the_lids(self):
+        # GazeFitTests.Up_down_is_fitted_from_the_lids fits these numbers from a real calibration
+        params = params_from_dict({"y_const": 3.5225, "y_openness": -9.068, "y_iris": 5.4409})
+        eyes = {"left": dict(make_eye(v=-0.05), openness=0.33), "right": dict(make_eye(v=-0.03), openness=0.31)}
+        # 3.5225 - 9.068 * 0.32 + 5.4409 * -0.04
+        self.assertAlmostEqual(estimate_gaze(eyes, params)["y"], 0.4031, places=3)
+
+        # lids further apart (looking up) puts it higher on the screen
+        wide = {"left": dict(make_eye(v=-0.05), openness=0.36), "right": dict(make_eye(v=-0.03), openness=0.36)}
+        self.assertLess(estimate_gaze(wide, params)["y"], 0.4031)
+
+    def test_up_down_uses_only_the_open_eye_in_a_wink(self):
+        params = params_from_dict({"y_const": 3.5225, "y_openness": -9.068, "y_iris": 5.4409})
+        eyes = {"left": dict(make_eye(v=-0.04), openness=0.32), "right": dict(make_eye(v=0.2, closed=True), openness=0.05)}
+        self.assertAlmostEqual(estimate_gaze(eyes, params)["y"], 3.5225 - 9.068 * 0.32 + 5.4409 * -0.04, places=3)
+
+    def test_without_fitted_up_down_the_angle_model_is_used(self):
+        eyes = {"left": dict(make_eye(v=0.1), openness=0.3), "right": dict(make_eye(v=0.1), openness=0.3)}
+        self.assertEqual(estimate_gaze(eyes, DEFAULT_PARAMS)["y"], estimate_gaze({"left": make_eye(v=0.1), "right": make_eye(v=0.1)})["y"])
+
+    def test_fitted_up_down_without_openness_falls_back(self):
+        params = params_from_dict({"y_const": 3.5225, "y_openness": -9.068, "y_iris": 5.4409})
+        eyes = {"left": make_eye(v=0.1), "right": make_eye(v=0.1)}
+        self.assertEqual(estimate_gaze(eyes, params)["y"], estimate_gaze(eyes, DEFAULT_PARAMS)["y"])
+
+    def test_no_head_correction_by_default(self):
+        eyes = {"left": make_eye(h=0.1), "right": make_eye(h=0.1)}
+        self.assertEqual(estimate_gaze(eyes, DEFAULT_PARAMS, face_x=0.9)["x"], estimate_gaze(eyes, DEFAULT_PARAMS)["x"])
+
+    def test_bad_face_position_is_ignored(self):
+        params = GazeParams(head_x_gain=1.5, head_x_ref=0.5)
+        eyes = {"left": make_eye(h=0.1), "right": make_eye(h=0.1)}
+        self.assertEqual(estimate_gaze(eyes, params, face_x=float("nan"))["x"], estimate_gaze(eyes, params)["x"])
+
+
 class SavedCalibrationTest(unittest.TestCase):
     """params_from_dict / load_params, for the files in app/Calibration/Saved/"""
 

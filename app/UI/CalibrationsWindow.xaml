@@ -48,6 +48,7 @@
             <Button x:Name="NewButton" Content="New calibration" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" Click="NewButton_Click" />
             <Button x:Name="UseButton" Content="Use this one" Style="{StaticResource DarkButton}" Margin="0,0,8,8" Click="UseButton_Click" />
             <Button x:Name="DeleteButton" Content="Delete" Style="{StaticResource DarkButton}" Margin="0,0,8,8" Click="DeleteButton_Click" />
+            <Button x:Name="TestButton" Content="Test accuracy" Style="{StaticResource DarkButton}" Margin="0,0,8,8" Click="TestButton_Click" />
             <Button x:Name="CloseButton" Content="Close" Style="{StaticResource DarkButton}" Margin="0,0,8,8" Click="CloseButton_Click" />
         </WrapPanel>
 

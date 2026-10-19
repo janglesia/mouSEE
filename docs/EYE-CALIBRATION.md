@@ -60,8 +60,8 @@ Each step: say the instruction out loud, wait, record. **Throw away the first ~1
 | 1 | "Keep both eyes open and look at each corner of the screen" (move a dot around) | 8 s | `iris_ratio`, `contrast` of both eyes | open-eye range | looking down partly covers the iris with the lid, so this step matters |
 | 2 | "Close your left eye" | 5 s | left: closed values. right: open values | `IRIS_HIDDEN_RATIO` | left `blink` higher than right |
 | 3 | "Close your right eye" | 5 s | same, swapped | `IRIS_HIDDEN_RATIO` | right `blink` higher than left |
-| 4 | "Close your left eye and tilt your head up" | 5 s | left closed values with the head tilted | `IRIS_HIDDEN_RATIO` | pitch at least 15° above resting |
-| 5 | "Close your right eye and tilt your head down" | 5 s | same | `IRIS_HIDDEN_RATIO` | pitch at least 15° below resting |
+| 4 | "Close your left eye and tilt your head up. Keep looking at the middle of the screen" | 5 s | left closed values with the head tilted | `IRIS_HIDDEN_RATIO` | pitch at least 15° above resting |
+| 5 | "Close your right eye and tilt your head down. Keep looking at the middle of the screen" | 5 s | same | `IRIS_HIDDEN_RATIO` | pitch at least 15° below resting |
 | 6 | "Close both eyes" | 4 s | both closed | `IRIS_HIDDEN_RATIO` | both `blink` > 0.5 |
 | 7 | Check: random mix of "close left / close right / open both", 3 s each, using the new values | ~20 s | `closed` | confirm it works | see "Checking the result" |
 

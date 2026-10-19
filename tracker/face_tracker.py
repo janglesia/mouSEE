@@ -17,7 +17,7 @@ Messages:
       "blendshapes":{"eyeBlinkLeft":0.02, ...51}}]}   # expression scores 0-1
   {"type":"error","message":"..."}
   {"type":"cameras","cameras":[{"index":0,"width":640,"height":480}]}   # only with --list-cameras, then it exits
-  {"type":"key","key":"q"}                   # q, p or c pressed in the preview window
+  {"type":"key","key":"q"}                   # q, p, c or r pressed in the preview window
 
 Coordinates are mirrored (like a selfie view), so moving your head right moves
 points right. Left/right in names (irises, blendshapes) mean the person's own
@@ -290,14 +290,14 @@ class Preview(threading.Thread):
             label = state.upper() + (f": {tracking['reason']}" if tracking["reason"] else "")
             color = {"ok": (0, 200, 0), "eyes_closed": (0, 165, 255)}.get(state, (0, 0, 255))
             cv2.putText(view, label, (10, fh - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            cv2.imshow("Tracker preview (q to quit, p to pause, c for calibrations)", view)
-            # the app quits on q, pauses on p and opens the calibrations on c.
-            # on its own (make tracker) q closes this and p and c do nothing
+            cv2.imshow("Tracker preview (q quit, p pause, c calibrations, r re-center)", view)
+            # the app quits on q, pauses on p, opens the calibrations on c and re-centers on r.
+            # on its own (make tracker) q closes this and the others do nothing
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 emit({"type": "key", "key": "q"})
                 self.closed.set()
-            elif key in (ord("p"), ord("c")):
+            elif key in (ord("p"), ord("c"), ord("r")):
                 emit({"type": "key", "key": chr(key)})
             # 30 fps is plenty for a preview, leave the rest of the CPU for tracking
             time.sleep(max(0.0, 1 / 30 - (time.monotonic() - shown_at)))
@@ -455,8 +455,10 @@ def main():
                     face["gaze_estimate"] = estimate_gaze(None, gaze_params)
                 else:
                     # Eye data exists, so estimate gaze normally.
+                    # where the face is and how the head is tilted, for the head corrections (leaning, tilting)
+                    box = face["box"]
                     face["eyes"]["estimate"] = estimate_gaze(
-                        face["eyes"], gaze_params
+                        face["eyes"], gaze_params, face_x=box[0] + box[2] / 2, face_pitch=face["pose"]["pitch"]
                     )
                     face["eye_extraction"] = {
                         "ok": True,

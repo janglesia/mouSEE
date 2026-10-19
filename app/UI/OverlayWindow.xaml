@@ -43,6 +43,15 @@
                             FontSize="13"/>
                 </StackPanel>
             </Border>
+            <!-- where to sit: move back toward where calibration was, or re-center (PositionGuide) -->
+            <Border x:Name="GuideBar" Background="#B8860B" CornerRadius="4" Padding="10,6" Margin="0,0,0,4" Visibility="Collapsed">
+                <TextBlock x:Name="GuideText"
+                        Foreground="White"
+                        FontFamily="Segoe UI"
+                        FontSize="14"
+                        TextWrapping="Wrap"
+                        MaxWidth="420"/>
+            </Border>
             <Border x:Name="DebugPanel" Background="#99000000" CornerRadius="4" Padding="8">
                 <TextBlock x:Name="DebugText"
                         Text="Starting tracker..."

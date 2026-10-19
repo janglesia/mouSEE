@@ -110,6 +110,9 @@ public sealed record CalibrationSettings
 
     [Setting("Ask to calibrate", "When there's no calibration yet, asks on startup if you want to make one. Without one mouSEE uses default values.")]
     public bool AskWhenMissing { get; init; } = true;
+
+    [Setting("Re-center on startup", "When mouSEE starts, look at a dot in the middle for two seconds so the bubble fits how you're sitting today.")]
+    public bool RecenterOnStart { get; init; } = true;
 }
 
 public sealed record AdvancedSettings

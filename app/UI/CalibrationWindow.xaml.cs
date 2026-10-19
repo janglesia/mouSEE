@@ -20,6 +20,7 @@ public partial class CalibrationWindow : Window
     private const int SettleMs = 700;        // eyes land on the target; logo shrinks to pull focus. NOT sampled
     // ring fill time (when a backend should collect samples) is the Calibration.TargetDwellMs setting
     private const double StartScale = 1.5;   // logo starts this much larger and shrinks to 1.0
+    private const int HeadMoveSettleMs = 800; // after saying how to hold the head, time to get into position
 
     // ---- results tuning (starting guesses, adjust once there are real numbers) ----
     private const double MinSolidTargetRatio = 0.6;   // a target counts if both eyes were tracked in this share of its capture frames
@@ -64,6 +65,7 @@ public partial class CalibrationWindow : Window
     private bool _sessionStarted;
     private bool _sessionEnded;
     private readonly SettingsService _settings = ((App)Application.Current).Settings;
+    private readonly Speaker _speaker = new(); // for the lean step's instruction
     private int _dwellMs; // Calibration.TargetDwellMs, read when a run starts
     // decides how long a tracking problem has lasted (shared logic in app/Gaze); we only show its verdict.
     // never paused, pausing is for the cursor and calibration needs tracking
@@ -160,6 +162,7 @@ public partial class CalibrationWindow : Window
             _monitor.Changed -= OnMonitorChanged;
             _settings.Changed -= OnSettingsChanged;
             _timeoutTimer.Stop();
+            _speaker.Dispose();
         };
 
         ShowPhase(Phase.Intro);
@@ -410,6 +413,36 @@ public partial class CalibrationWindow : Window
                 ProgressText.Text = $"Point {i + 1} of {Targets.Length}";
                 _calibrationRatios.Add(await RunTargetAsync(new CalibrationTarget(i, x, y), snap: i == 0, ct));
             }
+            // then the head step: dots while leaning left and right and with the head tilted up and down. The eyes are on a
+            // known dot while the head is somewhere else, which shows the fit what leaning and tilting do (GazeFit.FitHead).
+            // each new position is said and shown in the middle first, it's a different kind of step and easy to miss otherwise
+            LeanText.Visibility = Visibility.Visible;
+            try
+            {
+                string? pose = null;
+                int index = Targets.Length + ValidationTargets.Length;
+                foreach (var (p, x, y) in HeadPose.Step)
+                {
+                    if (p != pose)
+                    {
+                        string say = HeadPose.Say(p);
+                        if (pose is null) say = "Last step: your head. " + say;
+                        pose = p;
+                        LeanText.Text = HeadPose.Say(p);
+                        ProgressText.Text = "Last step: move your head and look at each dot";
+                        await _speaker.SayAsync(say, ct);
+                        await Task.Delay(HeadMoveSettleMs, ct); // time to get into position
+                    }
+                    await RunTargetAsync(new CalibrationTarget(index++, x, y, Pose: p), snap: false, ct);
+                }
+            }
+            finally
+            {
+                LeanText.Visibility = Visibility.Collapsed;
+            }
+            Speaker.Ding();
+            _ = _speaker.SayAsync("Done. Sit normally again.", CancellationToken.None);
+
             CalibrationCompleted?.Invoke(); // the backend can fit the mapping now
 
             if (RunValidation)
@@ -436,7 +469,7 @@ public partial class CalibrationWindow : Window
     }
 
     // Moves to the target, lets the eye settle, then fills the ring. Returns the share of capture frames with both eyes tracked.
-    private async Task<double> RunTargetAsync(CalibrationTarget target, bool snap, CancellationToken ct)
+    private async Task<double> RunTargetAsync(CalibrationTarget target, bool snap, CancellationToken ct, int? dwellMs = null)
     {
         SetRingProgress(0);
 
@@ -446,7 +479,7 @@ public partial class CalibrationWindow : Window
         await SettleAsync(ct);
         TargetCaptureStarted?.Invoke(target);
 
-        double ratio = await DwellAsync(ct);
+        double ratio = await DwellAsync(ct, dwellMs ?? _dwellMs);
         TargetAccepted?.Invoke(target);
         return ratio;
     }
@@ -494,7 +527,7 @@ public partial class CalibrationWindow : Window
         await Task.Delay(SettleMs, ct);
     }
 
-    private async Task<double> DwellAsync(CancellationToken ct)
+    private async Task<double> DwellAsync(CancellationToken ct, int dwellMs)
     {
         _dwellTotal = 0;
         _dwellReady = 0;
@@ -502,9 +535,9 @@ public partial class CalibrationWindow : Window
         try
         {
             var sw = Stopwatch.StartNew();
-            while (sw.ElapsedMilliseconds < _dwellMs)
+            while (sw.ElapsedMilliseconds < dwellMs)
             {
-                SetRingProgress(sw.ElapsedMilliseconds / (double)_dwellMs);
+                SetRingProgress(sw.ElapsedMilliseconds / (double)dwellMs);
                 await Task.Delay(16, ct);
             }
             SetRingProgress(1);

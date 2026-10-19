@@ -9,16 +9,25 @@ namespace app.Calibration;
 public sealed record EyeSample(double? IrisRatio, double? Contrast, double? Blink, double Openness, double WidthPx,
                                bool Closed, bool Covered, double OffsetH = 0, double OffsetV = 0);
 
-// one tracker frame, Ms since the step's recording started
+// one tracker frame, Ms since the step's recording started. FaceX / FaceY: the middle of the face in the camera image,
+// FaceW its width, all 0-1 of the image (mirrored like the tracker, so leaning to your right makes FaceX bigger).
+// Where the head is changes where the same eye angle lands on the screen. EstimateX / EstimateY: where the tracker put the bubble
 public sealed record FrameSample(long Ms, bool FaceFound, double Yaw, double Pitch, EyeSample? Left, EyeSample? Right,
-                                 double CaptureFps, double Roll = 0)
+                                 double CaptureFps, double Roll = 0, double FaceX = 0, double FaceY = 0, double FaceW = 0,
+                                 double? EstimateX = null, double? EstimateY = null)
 {
     public static FrameSample From(TrackerMessage msg, long ms)
     {
         var face = msg.Faces is { Count: > 0 } faces ? faces[0] : null;
+        var box = face?.Box is { Length: 4 } b ? b : null;
         return new FrameSample(ms, face is not null, face?.Pose.Yaw ?? 0, face?.Pose.Pitch ?? 0,
-            Eye(face?.Eyes?.Left), Eye(face?.Eyes?.Right), msg.CaptureFps, face?.Pose.Roll ?? 0);
+            Eye(face?.Eyes?.Left), Eye(face?.Eyes?.Right), msg.CaptureFps, face?.Pose.Roll ?? 0,
+            box is null ? 0 : box[0] + box[2] / 2, box is null ? 0 : box[1] + box[3] / 2, box?[2] ?? 0,
+            Estimate(face)?.X, Estimate(face)?.Y);
     }
+
+    // where the tracker put the bubble (0-1 of the screen), null when it had no estimate
+    private static GazeEstimate? Estimate(Face? face) => face?.Eyes?.Estimate is { Valid: true } e ? e : null;
 
     private static EyeSample? Eye(EyeData? e) =>
         e is null ? null : new EyeSample(e.IrisRatio, e.Contrast, e.Blink, e.Openness, e.WidthPx, e.Closed, e.Covered,
@@ -94,8 +103,8 @@ public static class EyeCheckSteps
         new(EyeCheckStepKind.LookAround, "Keep both eyes open and follow the dot with your eyes.", null, 8000),
         new(EyeCheckStepKind.CloseLeft, "Close your left eye. Keep the right one open.", "Open your eyes.", 5000),
         new(EyeCheckStepKind.CloseRight, "Close your right eye. Keep the left one open.", "Open your eyes.", 5000),
-        new(EyeCheckStepKind.CloseLeftHeadUp, "Close your left eye and tilt your head up.", "Open your eyes and look at the screen again.", 5000),
-        new(EyeCheckStepKind.CloseRightHeadDown, "Close your right eye and tilt your head down.", "Open your eyes and look at the screen again.", 5000),
+        new(EyeCheckStepKind.CloseLeftHeadUp, "Close your left eye and tilt your head up. Keep looking at the middle of the screen.", "Open your eyes and hold your head normally again.", 5000),
+        new(EyeCheckStepKind.CloseRightHeadDown, "Close your right eye and tilt your head down. Keep looking at the middle of the screen.", "Open your eyes and hold your head normally again.", 5000),
         new(EyeCheckStepKind.CloseBoth, "Close both eyes until you hear the sound.", "Open your eyes.", 4000),
     ];
 

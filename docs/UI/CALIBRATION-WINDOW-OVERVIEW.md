@@ -37,3 +37,6 @@ dotnet run --project app -- --calibration-preview
     3. A validation step measuring errors across the 4 extra check targets (activated via `RunValidation`).
     4. A gaze predictor for the optional Test Tracking screen.
     5. Persistence logic for saving accepted calibration results (to be housed primarily within `app/Calibration`, pending database access design).
+
+### 10/18/2026
+* **Lean step:** after the 9 targets the logo goes back to the middle for 8 seconds and the user leans left and right while looking at it. It shows how much leaning shifts the gaze, see [SAVED-CALIBRATIONS.md](../SAVED-CALIBRATIONS.md#leaning-left-and-right). The frames while each ring fills are now collected and the gaze is fitted to them, so items 1, 2 and 5 of the list above are done.

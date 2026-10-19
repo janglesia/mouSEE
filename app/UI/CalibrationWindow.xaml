@@ -68,6 +68,12 @@
             </Grid>
         </Canvas>
 
+        <!-- the head step's instruction (lean left, tilt up...), big and above the middle so it can't be missed. also read out -->
+        <TextBlock x:Name="LeanText" Visibility="Collapsed" IsHitTestVisible="False"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,240" MaxWidth="900"
+                   Foreground="#1C1C1C" FontSize="34" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"
+                   Text="" />
+
         <!-- subtle progress readout while running -->
         <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" VerticalAlignment="Bottom"
                     HorizontalAlignment="Center" Margin="0,0,0,28">

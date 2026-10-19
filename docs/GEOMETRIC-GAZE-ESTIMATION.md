@@ -10,6 +10,11 @@ This method converts iris movement and maps it to a location on the screen.
 | `k_h`, `k_v` | Conversion factors from horizontal and vertical iris displacement to eyeball angular displacement. |
 | `center_x`, `center_y` | Location of the screen center relative to the person, normalized to screen size. Values range from 0 to 1. |
 | `gain_x`, `gain_y` | Distance from the person to the screen normalized to screen size. |
+| `left_h_baseline`, `right_h_baseline` (and `_v_`) | Where each iris sits when looking at the middle of the screen, subtracted from `h` / `v` first. The eyes turn in a bit, so they differ per eye. |
+| `head_x_gain`, `head_x_ref` | Leaning left/right: `x` moves by `head_x_gain` for every 1.0 the middle of the face moves across the camera image, from `head_x_ref`. 0 = no correction. |
+| `y_const`, `y_openness`, `y_iris` | Up/down from the lids instead of the angle: `y = y_const + y_openness * lid openness + y_iris * v`, both averaged over the open eyes. The iris barely moves up and down in `v`, the lids do. When `y_openness` and `y_iris` are 0 (not calibrated) `y` comes from `k_v` / `gain_y` below. |
+
+All of these are fitted per person by the calibration, see [SAVED-CALIBRATIONS.md](SAVED-CALIBRATIONS.md#how-the-gaze-is-fitted). The values below are what's used without a calibration.
 
 ## Placeholder Assumptions
 

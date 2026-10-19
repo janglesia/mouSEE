@@ -363,9 +363,13 @@ public partial class EyeCheckWindow : Window
         }
 
         SetBright(false);
-        InstructionText.Text = "Open your eyes.";
         HintText.Text = "";
-        await _speaker.SayAsync(InstructionText.Text, ct);
+        // the last one may have been "Open both eyes" already, then saying it again sounds like a mistake
+        if (order[^1] != CheckTrial.OpenBoth)
+        {
+            InstructionText.Text = "Open your eyes.";
+            await _speaker.SayAsync(InstructionText.Text, ct);
+        }
         return EyeCheckRound.Score(runs);
     }
 

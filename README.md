@@ -44,9 +44,10 @@ mouSEE/
     AppPaths.cs              where settings and calibrations are saved
     UI/
       OverlayWindow.xaml(.cs)      readout in the bottom left corner of the screen
-      CalibrationWindow.xaml(.cs)  nine-point calibration screen (UI only so far)
+      CalibrationWindow.xaml(.cs)  nine-point calibration screen, the gaze gets fitted to it
       CalibrationsWindow.xaml(.cs) the saved calibrations: pick, delete, make a new one
       EyeCheckWindow.xaml(.cs)     the eye check: open and closed eyes, head angle
+      AccuracyTestWindow.xaml(.cs) the accuracy test: where the bubble lands for dots all over the screen
       Speaker.cs                   reads instructions out loud
       ChoicePrompt.xaml(.cs)       yes / no by looking right / left, used by the calibration screens
     Calibration/
@@ -57,6 +58,8 @@ mouSEE/
       EyeCheckAnalysis.cs    works out the eye values from what was recorded
       EyeCheckRound.cs       the last eye check step, checking the values work
       CalibrationReport.cs   what a calibration saves: why each value is what it is, and the raw frames
+      GazeFit.cs             fits the gaze to the nine-point targets, so the bubble lands where you look
+      AccuracyTest.cs        the accuracy test's points and results
       Saved/                 your calibrations (made by the app, not in git)
     Gaze/
       TrackingMonitor.cs     decides when tracking counts as lost, and what to tell the user
