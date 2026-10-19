@@ -61,7 +61,7 @@ mouSEE/
       FineTune.cs, FineTuneWindow  fine-tune: 20 dots, then a last correction on the bubble
       PositionGuide.cs           the where-to-sit hints: which way to move or tilt, or to re-center
       HeadPosition.cs            where the head is (face position, size, tilt)
-      HeadModes/                 what moving your head does: cancelled out, nudging the bubble, or both
+      HeadModes/                 what moving your head does: nothing, or pushing the bubble once it holds (the nudge)
     LookToAnswer/              yes / no without hands: look right for yes, left for no
       LookChoice.cs              the logic, held for 3 seconds
       ClosedEyesGate.cs          "done looking": eyes closed for 1.5 s before a yes / no counts
@@ -217,7 +217,7 @@ gaze h +0.012  v -0.034  center
 
 Everything should change as you move. A camera window also opens, showing the landmarks on your face. It only updates at 30 fps to save CPU, the overlay shows the actual tracking speed.
 
-To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations, **Ctrl+Alt+R** (or `r`) re-centers: look at the dot in the middle for a moment, and the bubble fits how you're sitting now. It also runs when mouSEE starts. **Ctrl+Alt+F** (or `f`) fine-tunes: 20 dots, then the bubble is corrected to land on them, and you choose whether to keep it. The calibrations window also picks what your head does: cancelled out, nudging the bubble, or both (see [docs/bubble/HEAD-MODES.md](docs/bubble/HEAD-MODES.md)). The Ctrl+Alt keys work from any program, q, p, c, r and f only while the camera window is focused.
+To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations, **Ctrl+Alt+R** (or `r`) re-centers: look at the dot in the middle for a moment, and the bubble fits how you're sitting now. It also runs when mouSEE starts. **Ctrl+Alt+F** (or `f`) fine-tunes: 20 dots, then the bubble is corrected to land on them, and you choose whether to keep it. The calibrations window also picks what your head does: Eyes only, or Eyes + head nudge, where the bubble holds when your eyes rest and your head pushes it the last bit (see [docs/bubble/HEAD-MODES.md](docs/bubble/HEAD-MODES.md)). The Ctrl+Alt keys work from any program, q, p, c, r and f only while the camera window is focused.
 
 ### Calibration screen
 

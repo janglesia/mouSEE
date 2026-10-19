@@ -39,7 +39,7 @@ public partial class OverlayWindow : Window
     private readonly TrackingMonitor _monitor;
     // where to sit: move back toward where calibration was, or re-center
     private readonly PositionGuide _guide = new();
-    // the nudge and both head modes: the head nudges the bubble once the eyes settle (app/Bubble/HeadModes/)
+    // the two nudge head modes: the head nudges the bubble once the eyes settle (app/Bubble/HeadModes/)
     private readonly HeadNudge _nudge;
     // no where-to-sit tips while the head nudges the bubble (the tilting is on purpose then), and for a moment after
     // letting go, to get the head back
@@ -226,7 +226,7 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        // the fine-tune and the re-center's shift, then the head nudge (in the nudge and both head modes), then kept
+        // the fine-tune and the re-center's shift, then the head nudge (in the two nudge head modes), then kept
         // within the screen. the bubble turns yellow while it holds on a spot and the head nudges it
         (x, y) = _app.Bubble(x, y);
         if (_settings.Current.Head.Mode.Nudges() && msg.Faces?.FirstOrDefault()?.Pose is { } pose)

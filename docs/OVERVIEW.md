@@ -64,7 +64,7 @@ The words that come up everywhere, in the order a user meets them:
 | **Re-center** | Look at a dot in the middle for 2 seconds. Corrects a small shift from sitting a bit differently today. | Every start, or Ctrl+Alt+R |
 | **Fine-tune** | 20 dots, and the bubble gets a final correction so it lands on them. For when the bubble is off on a later day. | When you want, Ctrl+Alt+F |
 | **Accuracy test** | Dots all over the screen, sitting normally and leaning and tilting. It only measures how far off the bubble is, nothing changes. | When you want, from the calibrations window |
-| **Head modes** | What moving your head does: cancelled out (default), nudges the bubble, or both. | Picked in the calibrations window |
+| **Head modes** | What moving your head does. **Eyes only** (default): nothing, the calibration's head correction undoes it. **Eyes + head nudge**: the same, plus the nudge. **Eyes + head nudge, no head correction**: the nudge without the head correction, for comparing. | Picked in the calibrations window |
 | **Nudge** | Your eyes stop on a spot, the bubble turns yellow and holds, and turning or tilting your head pushes it the last bit. | In the nudge head modes |
 | **Where-to-sit hints** | A yellow bar on the overlay: "Move a little to your left", "Tilt your head up a little"... because the calibration only knows the head near where it was. | While using mouSEE |
 | **Answering by looking** | Yes or no without hands: look right for yes, left for no, for 3 seconds. | Every question in the calibration screens |

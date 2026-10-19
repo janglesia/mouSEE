@@ -13,7 +13,7 @@ public class UiColorsTests
     [Fact]
     public void Middle_dot_is_the_dark_on_the_yellow()
     {
-        // the grid screen, and the eye check's bright steps
+        // the eye check's bright steps
         Assert.Equal(UiColors.Dark, UiColors.MiddleDot(UiColors.Hex("#F7D060")));
     }
 }

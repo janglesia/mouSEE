@@ -1,7 +1,7 @@
 namespace app.Bubble.HeadModes;
 
 /// <summary>
-/// Head nudge, for the nudge and both modes (HeadMode.cs): the eyes get the bubble close, the head does the last bit.
+/// Head nudge, for the two nudge modes (HeadMode.cs): the eyes get the bubble close, the head does the last bit.
 ///
 /// Following: the bubble is where the eyes are. Once they stay on one spot for the settle time (head.nudgeSettleMs), the
 /// bubble holds there, and the head angle at that moment counts as zero. Holding: turning your head moves the bubble

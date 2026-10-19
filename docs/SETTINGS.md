@@ -74,7 +74,7 @@ What moving your head does to the bubble, three ways to try against each other. 
 
 | Setting | Default | Allowed | When | Used | What it does |
 |---------|---------|---------|------|------|--------------|
-| `head.mode` | `"cancel"` | `"cancel"` / `"nudge"` / `"both"` | right away (restarts the tracker when cancelling turns on or off) | yes | `cancel`: head movement is cancelled out, the bubble follows the eyes only (how it was before). `nudge`: not cancelled, and once the eyes settle, turning or tilting the head nudges the bubble. `both`: cancelled and nudged. |
+| `head.mode` | `"cancel"` | `"cancel"` / `"both"` / `"nudge"` | right away (restarts the tracker when the head correction turns on or off) | yes | `cancel` = **Eyes only**: the head correction is on, moving your head doesn't move the bubble. `both` = **Eyes + head nudge**: the same, plus the bubble holds when your eyes rest and turning or tilting your head pushes it. `nudge` = **Eyes + head nudge, no head correction**: the nudge without the head correction, for comparing. The names are from before the modes were renamed. See [HEAD-MODES.md](bubble/HEAD-MODES.md). |
 | `head.nudgeStrength` | `1.5` | 0.25 - 5, % of the screen per degree | right away | yes | How far the bubble moves for each degree you turn or tilt your head while nudging. |
 | `head.nudgeDeadZone` | `1` | 0 - 5 degrees | right away | yes | Head movement smaller than this doesn't nudge, so the bubble doesn't drift while you hold still. |
 | `head.nudgeSettleMs` | `600` | 100 - 3000 ms | right away | yes | How long the eyes stay on one spot before the bubble holds there and the head can nudge it. |

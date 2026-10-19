@@ -4,7 +4,7 @@ public class HeadNudgeTests
 {
     private static readonly HeadSettings Settings = new()
     {
-        Mode = HeadMode.Both, NudgeStrength = 1.5, NudgeDeadZone = 1, NudgeSettleMs = 300, NudgeReleasePercent = 15,
+        Mode = HeadMode.EyesAndNudge, NudgeStrength = 1.5, NudgeDeadZone = 1, NudgeSettleMs = 300, NudgeReleasePercent = 15,
     };
 
     // the eyes on one spot for long enough to settle, at 60 fps, head at yaw 2, pitch -12. returns the next ms

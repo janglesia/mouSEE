@@ -94,11 +94,11 @@ public sealed record TrackingSettings
 }
 
 // what moving your head does to the bubble, see app/Bubble/HeadModes/ and docs/bubble/HEAD-MODES.md. the mode is picked in the
-// calibrations window, the nudge numbers only matter in the nudge and both modes
+// calibrations window, the nudge numbers only matter in the two nudge modes
 public sealed record HeadSettings
 {
-    [Setting("Head mode", "What moving your head does: cancelled out so the bubble follows your eyes only, nudges the bubble once your eyes settle, or both. Changing whether it's cancelled restarts the tracker.")]
-    public HeadMode Mode { get; init; } = HeadMode.Cancel;
+    [Setting("Head mode", "What moving your head does. Eyes only: nothing, the head correction undoes it. Eyes + head nudge: nothing either, until your eyes rest on a spot and the bubble holds, then turning or tilting your head pushes it. Eyes + head nudge, no head correction: the same nudge, but leaning or tilting also moves the bubble by accident, for comparing. Turning the head correction on or off restarts the tracker.")]
+    public HeadMode Mode { get; init; } = HeadMode.EyesOnly;
 
     [Setting("Nudge strength", "How far the bubble moves for each degree you turn or tilt your head while nudging.", Min = 0.25, Max = 5, Step = 0.25, Unit = "% of the screen per degree")]
     public double NudgeStrength { get; init; } = 1.5;

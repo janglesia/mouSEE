@@ -114,7 +114,7 @@ The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from 
 --list-cameras        print the cameras that open as JSON and exit
 --calibration FILE    use a saved calibration (app/Calibration/Saved/*.json), see docs/calibration/SAVED-CALIBRATIONS.md
 --record-eyes FILE    also write every frame's eye measurements to a CSV, see docs/calibration/EYE-CALIBRATION.md
---no-head-compensation  don't cancel head movement out of the gaze (the app's nudge head mode), see docs/bubble/HEAD-MODES.md
+--no-head-compensation  turn the head correction off (the app's "no head correction" mode), see docs/bubble/HEAD-MODES.md
 ```
 
 If the camera can't do what you ask for, it picks the closest mode it has.

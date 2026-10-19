@@ -143,7 +143,6 @@ public partial class GridWindow : Window
     public GridWindow()
     {
         InitializeComponent();
-        Middle.Follow(Choice);
         Choice.Chosen += yes => _onChoice?.Invoke(yes);
 
         // Cover the whole primary screen, taskbar included, so normalized target positions are screen positions.

@@ -30,7 +30,7 @@ Open it with **Ctrl+Alt+C** (from any program) or **c** in the camera window.
 - **Delete** deletes the selected one, after asking
 - **Test accuracy** opens the accuracy test with the calibration in use, see [Testing accuracy](ACCURACY-TEST.md)
 - **Fine-tune** makes the last adjustments to the calibration in use, see [Fine-tuning](../bubble/FINE-TUNE.md)
-- **What your head does** picks one of the three head modes: cancel head movement, nudge with your head, or both. See [HEAD-MODES.md](../bubble/HEAD-MODES.md)
+- **What your head does** picks one of the three head modes: Eyes only, Eyes + head nudge, or Eyes + head nudge without the head correction. See [HEAD-MODES.md](../bubble/HEAD-MODES.md)
 - **New calibration** starts a new one (eye check, then the grid screen), it's saved and used once the eye check is done
 - if a calibration was made on a screen with a different size, it says so. It still works but won't line up
 

@@ -207,7 +207,7 @@ def eye_record_row(t_ms, face, tracking):
 def head_inputs(box, pose, cancel_head=True):
     """Where the face is and how the head is tilted, for the gaze model's head corrections (leaning, tilting), as
     estimate_gaze() keywords. Empty with --no-head-compensation: then head movement isn't cancelled out of the gaze,
-    for the app's nudge head mode (docs/bubble/HEAD-MODES.md)."""
+    for the app's "Eyes + head nudge, no head correction" mode (docs/bubble/HEAD-MODES.md)."""
     if not cancel_head:
         return {}
     return {"face_x": box[0] + box[2] / 2, "face_pitch": pose["pitch"]}
@@ -334,7 +334,7 @@ def main():
     parser.add_argument("--record-eyes", metavar="FILE",
                         help="also write every frame's eye measurements to this CSV file, for checking detection problems")
     parser.add_argument("--no-head-compensation", action="store_true",
-                        help="don't cancel head movement out of the gaze (the app's nudge head mode, docs/bubble/HEAD-MODES.md)")
+                        help="turn the head correction off, so head movement stays in the gaze (the app's 'no head correction' mode, docs/bubble/HEAD-MODES.md)")
     parser.add_argument("--list-cameras", action="store_true",
                         help="print the cameras that open as one JSON line and exit")
     args = parser.parse_args()

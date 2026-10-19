@@ -6,31 +6,37 @@ namespace app.Bubble.HeadModes;
 // What moving your head does to the bubble, three ways to try against each other. Picked in the calibrations window
 // (setting head.mode). See docs/bubble/HEAD-MODES.md
 //
-// There are two separate parts, and each mode turns them on or off:
-//   cancelling: the calibration's head corrections (leaning, tilting) take head movement out of the gaze, so the
-//               bubble stays where the eyes look. Done in the tracker (gaze_model.py), --no-head-compensation turns it off
-//   nudging:    once the eyes settle on a spot, turning or tilting the head moves the bubble from there (HeadNudge.cs).
-//               Done in the app, on the overlay's bubble
+// There are two separate switches, and each mode is a combination of them:
+//   head correction: the calibration's head corrections (leaning, tilting) take head movement out of the eye reading,
+//                    so the bubble stays where the eyes look. Done in the tracker (gaze_model.py),
+//                    --no-head-compensation turns it off
+//   head nudge:      once the eyes settle on a spot the bubble holds (yellow), and turning or tilting the head pushes it
+//                    from there (HeadNudge.cs). Done in the app, on the overlay's bubble
+//
+//                    head correction   head nudge
+//   EyesOnly         on                off          how it was before the head modes
+//   EyesAndNudge     on                on           the head only moves the bubble on purpose, while it's held
+//   NudgeNoCorrection off              on           the head always moves it, by accident too. For comparing
+//
+// The names in settings.json ("cancel", "both", "nudge") are from before the modes were renamed, and stay so saved
+// settings keep working.
 [JsonConverter(typeof(JsonStringEnumConverter<HeadMode>))]
 public enum HeadMode
 {
-    // 1. how it was before the head modes: cancelling only
-    [JsonStringEnumMemberName("cancel"), Choice("Cancel head movement")] Cancel,
-    // 2. nudging only, the tracker doesn't cancel head movement
-    [JsonStringEnumMemberName("nudge"), Choice("Nudge with your head")] Nudge,
-    // 3. cancelling and nudging
-    [JsonStringEnumMemberName("both"), Choice("Cancel and nudge")] Both,
+    [JsonStringEnumMemberName("cancel"), Choice("Eyes only")] EyesOnly,
+    [JsonStringEnumMemberName("both"), Choice("Eyes + head nudge")] EyesAndNudge,
+    [JsonStringEnumMemberName("nudge"), Choice("Eyes + head nudge, no head correction")] NudgeNoCorrection,
 }
 
 public static class HeadModeExtensions
 {
     public static IReadOnlyList<HeadMode> All { get; } = Enum.GetValues<HeadMode>();
 
-    /// <summary>Whether the tracker takes head movement out of the gaze (the calibration's head corrections).</summary>
-    public static bool Cancels(this HeadMode mode) => mode is HeadMode.Cancel or HeadMode.Both;
+    /// <summary>Head correction: whether the tracker takes head movement out of the eye reading.</summary>
+    public static bool Cancels(this HeadMode mode) => mode is HeadMode.EyesOnly or HeadMode.EyesAndNudge;
 
-    /// <summary>Whether turning or tilting the head nudges the bubble once the eyes settle.</summary>
-    public static bool Nudges(this HeadMode mode) => mode is HeadMode.Nudge or HeadMode.Both;
+    /// <summary>Head nudge: whether turning or tilting the head pushes the bubble once the eyes settle.</summary>
+    public static bool Nudges(this HeadMode mode) => mode is HeadMode.EyesAndNudge or HeadMode.NudgeNoCorrection;
 
     /// <summary>Its name, the same as in a settings screen (the Choice on it).</summary>
     public static string Label(this HeadMode mode) =>
@@ -39,10 +45,12 @@ public static class HeadModeExtensions
     /// <summary>One line on what it does, for the calibrations window.</summary>
     public static string Describe(this HeadMode mode) => mode switch
     {
-        HeadMode.Cancel => "The bubble follows your eyes only. Leaning and tilting your head are cancelled out by the calibration, " +
-                           "so the bubble stays where you look. How mouSEE worked so far.",
-        HeadMode.Nudge => "Your eyes get the bubble close. Once they settle on a spot, turn or tilt your head toward where you want it " +
-                          "and it moves there. Head movement isn't cancelled out.",
-        _ => "Both: head movement is cancelled out, and once your eyes settle, turning or tilting your head nudges the bubble.",
+        HeadMode.EyesOnly => "Only your eyes move the bubble. If you lean or tilt your head, the calibration corrects for it, " +
+                             "so the bubble stays where you look.",
+        HeadMode.EyesAndNudge => "Like Eyes only, plus: when your eyes rest on a spot, the bubble turns yellow and holds. Then turn " +
+                                 "or tilt your head toward where you want it and it moves there. Look somewhere else to let go. " +
+                                 "Your head only moves the bubble on purpose, while it's yellow.",
+        _ => "The same nudge, but without the head correction: leaning or tilting also moves the white bubble, by accident. " +
+             "Only for comparing: if this feels steadier than Eyes + head nudge, the head correction isn't helping you.",
     };
 }

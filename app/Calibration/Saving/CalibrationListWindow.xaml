@@ -58,7 +58,7 @@
         <TextBlock Text="What your head does" Foreground="White" FontSize="15" FontWeight="SemiBold" Margin="0,12,0,2" />
         <TextBlock Text="Try each one to see which works best for you. It applies right away." Foreground="#8A8A8A" FontSize="12" Margin="0,0,0,6" />
         <StackPanel x:Name="HeadModeList" />
-        <!-- the nudge's numbers, only in the nudge and both modes. sliders made in code from the head.* settings -->
+        <!-- the nudge's numbers, only in the two nudge modes. sliders made in code from the head.* settings -->
         <Border x:Name="NudgePanel" Background="#1C1C1C" CornerRadius="6" Padding="14,10" Margin="24,0,0,8" Visibility="Collapsed">
             <StackPanel x:Name="NudgeSliders" />
         </Border>
