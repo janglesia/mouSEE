@@ -1,6 +1,7 @@
 <Window x:Class="app.UI.CalibrationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:app.UI"
         Title="mouSEE Calibration"
         WindowStyle="None"
         ResizeMode="NoResize"
@@ -181,5 +182,9 @@
                 </StackPanel>
             </StackPanel>
         </Border>
+
+        <!-- Begin / Cancel and Accept / Try again by looking, for people who can't use the buttons. at the screen's edges so
+             the eyes have to really look that way -->
+        <local:ChoicePrompt x:Name="Choice" VerticalAlignment="Bottom" Margin="32,0,32,48" Visibility="Collapsed" />
     </Grid>
 </Window>

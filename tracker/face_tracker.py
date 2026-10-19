@@ -29,8 +29,11 @@ https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_lan
 Run standalone to test:  python face_tracker.py --preview
 """
 from eye_extractor import extract_eyes, draw_eyes, GazeSmoother, EyeValidator
-from gaze_model import estimate_gaze, load_params, DEFAULT_PARAMS
+from gaze_model import estimate_gaze, params_from_dict, DEFAULT_PARAMS
 from tracking_status import tracking_status
+# the modules themselves, to set the eye check's values in them (see apply_eye_thresholds)
+import eye_extractor as eye_extractor_module
+import tracking_status as tracking_status_module
 
 import argparse
 import json
@@ -63,6 +66,18 @@ CAMERA_BACKEND = cv2.CAP_MSMF if sys.platform == "win32" else cv2.CAP_ANY
 # --list-cameras tries camera 0 up to MAX_CAMERAS - 1, but gives up after 2 in a row don't open
 MAX_CAMERAS = 10
 MAX_MISSES_IN_A_ROW = 2
+
+# the per-person values the eye check saves (the "eyes" part of a calibration file), and where each one lives.
+# a value outside lowest-highest is a broken file, not a person, so it's ignored. see docs/EYE-CALIBRATION.md
+EYE_THRESHOLDS = {
+    "IRIS_HIDDEN_RATIO": (eye_extractor_module, 0.3, 1.2),
+    "COVERED_CONTRAST": (eye_extractor_module, 0.01, 0.5),
+    "LIDS_OPEN_OPENNESS": (eye_extractor_module, 0.1, 0.6),
+    "REST_PITCH": (tracking_status_module, -60.0, 60.0),
+    "REST_YAW": (tracking_status_module, -60.0, 60.0),
+    "MAX_PITCH": (tracking_status_module, 10.0, 80.0),
+    "MAX_YAW": (tracking_status_module, 10.0, 80.0),
+}
 
 
 _emit_lock = threading.Lock()  # the preview thread emits key presses, lines must not mix
@@ -140,6 +155,54 @@ def log_gaze_diagnostics(gaze, eyes=None, filepath="gaze_diagnostics.csv"):
             "right_h_offset": right_offset.get("h"),
             "right_v_offset": right_offset.get("v"),
         })
+
+def apply_eye_thresholds(values):
+    """Sets the eye check's values (see EYE_THRESHOLDS) in eye_extractor / tracking_status. They read their
+    constants every frame, so this is enough. Unknown names, and values that aren't numbers or are out of range,
+    are skipped and keep the default. Returns {name: value} for what was set."""
+    applied = {}
+    if not isinstance(values, dict):
+        return applied
+    for name, value in values.items():
+        if name not in EYE_THRESHOLDS or isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        module, lowest, highest = EYE_THRESHOLDS[name]
+        if not (math.isfinite(value) and lowest <= value <= highest):
+            continue
+        setattr(module, name, float(value))
+        applied[name] = float(value)
+    return applied
+
+
+def load_calibration(path):
+    """Reads a saved calibration file (app/Calibration/Saved/*.json): applies its eye check values and
+    returns (gaze params, the eye values that were set). Raises OSError / ValueError if it can't be read."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("not a calibration file")
+    return params_from_dict(data.get("gaze")), apply_eye_thresholds(data.get("eyes"))
+
+
+# --record-eyes columns: the frame, then the same measurements for each eye
+EYE_RECORD_MEASUREMENTS = ("iris_ratio", "contrast", "blink", "openness", "width_px", "closed", "covered")
+EYE_RECORD_FIELDS = (["t_ms", "face", "state", "reason", "yaw", "pitch"]
+                     + [f"{side}_{m}" for side in ("left", "right") for m in EYE_RECORD_MEASUREMENTS])
+
+
+def eye_record_row(t_ms, face, tracking):
+    """One --record-eyes row. face: the face dict as sent to the app, or None. Missing eyes give empty cells."""
+    row = {"t_ms": t_ms, "face": face is not None, "state": tracking["state"], "reason": tracking["reason"]}
+    if face is not None:
+        row["yaw"], row["pitch"] = face["pose"]["yaw"], face["pose"]["pitch"]
+        eyes = face.get("eyes") or {}
+        for side in ("left", "right"):
+            eye = eyes.get(side)
+            if eye:
+                for m in EYE_RECORD_MEASUREMENTS:
+                    row[f"{side}_{m}"] = eye.get(m)
+    return row
+
 
 def list_cameras(max_cameras=MAX_CAMERAS, max_misses=MAX_MISSES_IN_A_ROW, open_camera=None):
     """[{"index", "width", "height"}] for every camera that opens and gives a frame.
@@ -259,6 +322,8 @@ def main():
                         help="show a debug window with landmarks drawn")
     parser.add_argument("--calibration", metavar="FILE",
                         help="saved calibration to use (app/Calibration/Saved/*.json), default values without one")
+    parser.add_argument("--record-eyes", metavar="FILE",
+                        help="also write every frame's eye measurements to this CSV file, for checking detection problems")
     parser.add_argument("--list-cameras", action="store_true",
                         help="print the cameras that open as one JSON line and exit")
     args = parser.parse_args()
@@ -270,8 +335,8 @@ def main():
     gaze_params = DEFAULT_PARAMS
     if args.calibration:
         try:
-            gaze_params = load_params(args.calibration)
-            log(f"using calibration {args.calibration}")
+            gaze_params, eye_values = load_calibration(args.calibration)
+            log(f"using calibration {args.calibration}" + (f", eye check values {eye_values}" if eye_values else ""))
         except (OSError, ValueError) as e:
             # carry on with the defaults, a broken calibration file shouldn't stop tracking
             log(f"can't read calibration {args.calibration}, using default values: {e}")
@@ -321,6 +386,13 @@ def main():
     # one per eye, they remember the last good eye to catch one-frame glitches
     eye_validator = {"left": EyeValidator(), "right": EyeValidator()}
     last_log_time = 0.0
+
+    recorder = record_file = None
+    if args.record_eyes:
+        record_file = open(args.record_eyes, "w", newline="", encoding="utf-8")
+        recorder = csv.DictWriter(record_file, fieldnames=EYE_RECORD_FIELDS)
+        recorder.writeheader()
+        log(f"recording eye measurements to {args.record_eyes}")
     try:
         while preview is None or not preview.closed.is_set():
             ok, frame = cap.read()
@@ -397,6 +469,8 @@ def main():
                 #    last_log_time = now
                 faces.append(face)
             tracking = tracking_status(faces[0] if faces else None)
+            if recorder:
+                recorder.writerow(eye_record_row(ts, faces[0] if faces else None, tracking))
             emit({"type": "frame", "t": ts, "wall": wall, "capture_fps": capture_fps, "landmark_ms": landmark_ms,
                   "tracking": tracking, "faces": faces})
 
@@ -410,6 +484,8 @@ def main():
             preview.join(timeout=1)
         cap.release()
         landmarker.close()
+        if record_file:
+            record_file.close()
     return 0
 
 

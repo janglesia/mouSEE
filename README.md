@@ -46,13 +46,21 @@ mouSEE/
       OverlayWindow.xaml(.cs)      readout in the bottom left corner of the screen
       CalibrationWindow.xaml(.cs)  nine-point calibration screen (UI only so far)
       CalibrationsWindow.xaml(.cs) the saved calibrations: pick, delete, make a new one
+      EyeCheckWindow.xaml(.cs)     the eye check: open and closed eyes, head angle
+      Speaker.cs                   reads instructions out loud
+      ChoicePrompt.xaml(.cs)       yes / no by looking right / left, used by the calibration screens
     Calibration/
       CalibrationTarget.cs   one calibration point and its position on screen
       CalibrationProfile.cs  one saved calibration
       CalibrationStore.cs    the saved calibrations, which one is in use
+      EyeCheckSteps.cs       the eye check steps and how each is checked
+      EyeCheckAnalysis.cs    works out the eye values from what was recorded
+      EyeCheckRound.cs       the last eye check step, checking the values work
+      CalibrationReport.cs   what a calibration saves: why each value is what it is, and the raw frames
       Saved/                 your calibrations (made by the app, not in git)
     Gaze/
       TrackingMonitor.cs     decides when tracking counts as lost, and what to tell the user
+      LookChoice.cs          yes / no by looking: right for yes, left for no, held for 3 seconds
     Settings/
       AppSettings.cs         every user setting with its default, range and description
       SettingsCatalog.cs     the list of all settings, for a settings screen
@@ -77,7 +85,7 @@ mouSEE/
     COMMANDS.md              the commands make runs, for running things by hand
     SETTINGS.md              every setting, and how to add one
     SAVED-CALIBRATIONS.md    how calibrations are saved and which one is used
-    EYE-CALIBRATION.md       design for the eye check wizard (not built yet)
+    EYE-CALIBRATION.md       the eye check: its steps, the math, how it's built
     GEOMETRIC-GAZE-ESTIMATION.md  how iris movement becomes a point on the screen
     UI/
       CALIBRATION-WINDOW-OVERVIEW.md      the calibration window: running it, changelog, what's left
@@ -102,6 +110,8 @@ mouSEE/
 **Settings** are in `app/Settings/`, see [Settings](#settings).
 
 **CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/CALIBRATION-WINDOW-OVERVIEW.md`.
+
+**The eye check** (EyeCheckWindow) is the first part of a new calibration. It reads out instructions (close one eye, close both, tilt your head...), checks you did each one and repeats it if not, and works out per-person values for when an eye counts as closed and how far the head can turn. It only needs your eyes and head, no hands. Its questions (begin, continue) are answered by looking right for yes or left for no for 3 seconds, and so are the startup question and the nine-point screen's. Then it checks them with the tracker using them. The nine-point screen follows. See [docs/EYE-CALIBRATION.md](docs/EYE-CALIBRATION.md).
 
 **Saved calibrations** are kept in `app/Calibration/Saved/`, one file each, and the last one you used is the one in use. If there are none yet, mouSEE asks on startup if you want to calibrate, otherwise it uses default values. **CalibrationsWindow** (Ctrl+Alt+C) lists them so you can switch, delete or make a new one. See [docs/SAVED-CALIBRATIONS.md](docs/SAVED-CALIBRATIONS.md).
 

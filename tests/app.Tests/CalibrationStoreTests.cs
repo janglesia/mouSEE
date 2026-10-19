@@ -187,7 +187,50 @@ public sealed class CalibrationStoreTests : IDisposable
             ScreenWidth = 1536,
             ScreenHeight = 864,
             Gaze = new GazeModel { KH = 0.6, KV = 0.8, LeftHBaseline = 0.01, GainX = 1.9 },
+            Eyes = new EyeThresholds { IrisHiddenRatio = 0.62, RestPitch = -9.5, MaxYaw = 40 },
         });
-        Assert.Equal(saved, Make().Active);
+        var loaded = Make().Active!;
+        // lists are compared by reference in a record, so compare everything but those
+        var none = new List<GazeTargetSummary>();
+        Assert.Equal(saved with { GazeTargets = none }, loaded with { GazeTargets = none });
+    }
+
+    [Fact]
+    public void Eye_values_use_the_tracker_names()
+    {
+        // face_tracker.py sets these straight into eye_extractor / tracking_status by name
+        var store = Make();
+        store.Add(new CalibrationProfile { Eyes = new EyeThresholds { IrisHiddenRatio = 0.7, CoveredContrast = 0.1, RestPitch = -9 } });
+
+        var eyes = JsonNode.Parse(File.ReadAllText(store.ActiveFile!))!["eyes"]!.AsObject();
+
+        Assert.Equal(0.7, (double)eyes["IRIS_HIDDEN_RATIO"]!);
+        Assert.Equal(0.1, (double)eyes["COVERED_CONTRAST"]!);
+        Assert.Equal(-9, (double)eyes["REST_PITCH"]!);
+        Assert.Equal(3, eyes.Count); // the ones not worked out are left out, the tracker keeps its defaults
+    }
+
+    [Fact]
+    public void Update_changes_it_but_keeps_its_file_and_times()
+    {
+        var store = Make();
+        var saved = AddOne(store);
+        _now = _now.AddMinutes(5);
+
+        store.Update(saved.Id, p => p with { Gaze = new GazeModel { KH = 0.5 }, Id = "other", CreatedAt = _now });
+
+        var updated = Make().Active!;
+        Assert.Equal(saved.Id, updated.Id);
+        Assert.Equal(saved.CreatedAt, updated.CreatedAt);
+        Assert.Equal(0.5, updated.Gaze.KH);
+    }
+
+    [Fact]
+    public void Write_file_writes_a_calibration_anywhere()
+    {
+        Directory.CreateDirectory(_dir);
+        string path = Path.Combine(_dir, "try.json");
+        CalibrationStore.WriteFile(new CalibrationProfile { Name = "eye check", Eyes = new EyeThresholds { MaxPitch = 33 } }, path);
+        Assert.Equal(33, (double)JsonNode.Parse(File.ReadAllText(path))!["eyes"]!["MAX_PITCH"]!);
     }
 }

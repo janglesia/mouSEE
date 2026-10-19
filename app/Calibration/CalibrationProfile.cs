@@ -22,6 +22,39 @@ public sealed record CalibrationProfile
     public double ScreenHeight { get; init; }
 
     public GazeModel Gaze { get; init; } = new();
+
+    // from the eye check (EyeCheckWindow). empty = the tracker's defaults
+    public EyeThresholds Eyes { get; init; } = new();
+
+    // what the eye check measured and why each value is what it is. for reading, the tracker only uses Eyes
+    public EyeCheckReport? EyeCheck { get; init; }
+
+    // what the eyes did at each nine-point target, what the gaze numbers get fitted to
+    public List<GazeTargetSummary> GazeTargets { get; init; } = [];
+
+    // the raw frames are in their own file, CalibrationStore.RecordingFileFor(Id)
+}
+
+/// <summary>
+/// Per-person eye detection values from the eye check, named like the constants in tracker/eye_extractor.py
+/// and tracker/tracking_status.py so the tracker can set them straight from the file. null = keep the default
+/// (the eye check couldn't work it out, or it wasn't run). See docs/EYE-CALIBRATION.md
+/// </summary>
+public sealed record EyeThresholds
+{
+    // eye closed when iris_ratio is above this (eye_extractor.py)
+    [JsonPropertyName("IRIS_HIDDEN_RATIO")] public double? IrisHiddenRatio { get; init; }
+    // lids at least this far apart mean the eye is open whatever the iris says, glasses reflections (eye_extractor.py)
+    [JsonPropertyName("LIDS_OPEN_OPENNESS")] public double? LidsOpenOpenness { get; init; }
+    // eye covered when contrast is below this (eye_extractor.py). the eye check doesn't set it (that needs a hand
+    // over the eye), it's here for a calibration file that has it
+    [JsonPropertyName("COVERED_CONTRAST")] public double? CoveredContrast { get; init; }
+    // head angle when sitting normally, head_turned is measured from here (tracking_status.py)
+    [JsonPropertyName("REST_PITCH")] public double? RestPitch { get; init; }
+    [JsonPropertyName("REST_YAW")] public double? RestYaw { get; init; }
+    // how far from resting the head can turn before it counts as head_turned (tracking_status.py)
+    [JsonPropertyName("MAX_PITCH")] public double? MaxPitch { get; init; }
+    [JsonPropertyName("MAX_YAW")] public double? MaxYaw { get; init; }
 }
 
 /// <summary>

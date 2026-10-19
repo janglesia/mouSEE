@@ -12,4 +12,8 @@
     <Resource Include="assets\mouSEE-logo.png" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Speech" Version="10.0.13" />
+  </ItemGroup>
+
 </Project>

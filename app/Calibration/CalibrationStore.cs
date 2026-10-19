@@ -23,6 +23,9 @@ public sealed class CalibrationStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, // gaze values that weren't worked out
     };
 
+    // recordings have thousands of frames, so no indenting (it would make them several times bigger)
+    private static readonly JsonSerializerOptions RecordingJson = new(Json) { WriteIndented = false };
+
     private readonly Func<DateTimeOffset> _now;
     private List<CalibrationProfile> _all = [];
 
@@ -91,6 +94,11 @@ public sealed class CalibrationStore
     /// <summary>Switches to this one.</summary>
     public void Use(string id) => Replace(id, p => p with { LastUsedAt = _now() });
 
+    /// <summary>Changes a saved calibration, e.g. adding the gaze numbers to one the eye check made.
+    /// Id, CreatedAt and LastUsedAt stay as they are.</summary>
+    public void Update(string id, Func<CalibrationProfile, CalibrationProfile> change) =>
+        Replace(id, p => change(p) with { Id = p.Id, CreatedAt = p.CreatedAt, LastUsedAt = p.LastUsedAt });
+
     public void Rename(string id, string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return;
@@ -102,11 +110,41 @@ public sealed class CalibrationStore
     {
         if (_all.All(p => p.Id != id)) return;
         File.Delete(FileFor(id));
+        if (File.Exists(RecordingFileFor(id))) File.Delete(RecordingFileFor(id));
         _all = _all.Where(p => p.Id != id).ToList();
         Changed?.Invoke();
     }
 
     public string FileFor(string id) => Path.Combine(Folder, id + ".json");
+
+    // the raw frames, in a subfolder so Reload doesn't take them for calibrations
+    public string RecordingFileFor(string id) => Path.Combine(Folder, "recordings", id + ".json");
+
+    /// <summary>Saves a calibration's raw frames, replacing what was saved for it before.</summary>
+    public void SaveRecording(string id, CalibrationRecording recording)
+    {
+        string path = RecordingFileFor(id);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string tmp = path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(recording, RecordingJson));
+        File.Move(tmp, path, overwrite: true);
+    }
+
+    /// <summary>A calibration's raw frames, null if there are none (made before recordings were saved, or unreadable).</summary>
+    public CalibrationRecording? LoadRecording(string id)
+    {
+        string path = RecordingFileFor(id);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<CalibrationRecording>(File.ReadAllText(path), RecordingJson);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"[calibration] can't read {path}: {ex.Message}");
+            return null;
+        }
+    }
 
     private void Replace(string id, Func<CalibrationProfile, CalibrationProfile> change)
     {
@@ -122,8 +160,13 @@ public sealed class CalibrationStore
     private void Write(CalibrationProfile profile)
     {
         Directory.CreateDirectory(Folder);
+        WriteFile(profile, FileFor(profile.Id));
+    }
+
+    /// <summary>Writes a calibration file somewhere else, e.g. a temporary one for the tracker to try.</summary>
+    public static void WriteFile(CalibrationProfile profile, string path)
+    {
         // write next to it and swap, so a crash mid-write can't leave half a file
-        string path = FileFor(profile.Id);
         string tmp = path + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(profile, Json));
         File.Move(tmp, path, overwrite: true);

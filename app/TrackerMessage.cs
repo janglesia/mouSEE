@@ -19,8 +19,8 @@ public record Irises(double[] Left, double[] Right);
 public record Pose(double Yaw, double Pitch, double Roll);
 
 public record Eyes(EyeData Left, EyeData Right, GazeData Gaze, GazeEstimate? Estimate = null);
-// the tracker sends more per eye (iris_ratio, contrast, openness, blink, covered, width_px),
-// add them here when needed. the eye check wizard will, see docs/EYE-CALIBRATION.md
+// the tracker sends more per eye (outline, corners, lids, iris position...), add them here when needed.
+// Left or Right is null when that eye wasn't found or was dropped as a glitch
 // i added this gaze estimate for the bubble
 public record GazeEstimate(
     bool Valid,
@@ -31,7 +31,12 @@ public record GazeEstimate(
     double? Y,
     [property: JsonPropertyName("eyes_used")] int EyesUsed
 );
-public record EyeData(EyeOffset Offset, bool Closed, double Openness = 0, bool Covered = false);
+// IrisRatio and Contrast come from the camera image and are null without one (see eye_extractor.py),
+// Blink is null without blendshapes. The eye check measures these, see docs/EYE-CALIBRATION.md
+public record EyeData(EyeOffset Offset, bool Closed, double Openness = 0, bool Covered = false,
+                      double? Blink = null, double? Contrast = null,
+                      [property: JsonPropertyName("iris_ratio")] double? IrisRatio = null,
+                      [property: JsonPropertyName("width_px")] double WidthPx = 0);
 public record EyeOffset(double H, double V);
 public record GazeRaw(double? H, double? V);
 public record GazeError(double? H, double? V);

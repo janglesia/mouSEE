@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 
 from tracker.eye_extractor import (extract_eyes, extract_feature_vector, eye_contrast, iris_ratio, EyeValidator,
-                                   MAX_REJECTIONS, COVERED_CONTRAST, IRIS_HIDDEN_RATIO)
+                                   MAX_REJECTIONS, COVERED_CONTRAST, IRIS_HIDDEN_RATIO, LIDS_OPEN_OPENNESS)
 
 
 RIGHT_EYE = {
@@ -340,6 +340,18 @@ def face_with_outlines(**face_args):
     return landmarks
 
 
+# MediaPipe brings a closed eye's lids together, so its openness drops. gap 0.02 gives openness 0.17 and an
+# iris ratio of 0.9, like a real wink (0.16-0.24 and 0.93 in the recordings)
+def close_lids(landmarks, name, gap=0.02):
+    eye = LEFT_EYE if name == "left" else RIGHT_EYE
+    cy = EYE_CENTERS[name][1]
+    for idx in eye["upper_lid"]:
+        landmarks[idx] = (landmarks[idx][0], cy - gap)
+    for idx in eye["lower_lid"]:
+        landmarks[idx] = (landmarks[idx][0], cy + gap)
+    return landmarks
+
+
 # fake camera frame (not mirrored, like the real one): an open eye is a white eye with a dark
 # iris, a covered eye is the same flat skin colour as the rest of the face, a closed eye is skin
 # with a dark lash line across it (so it isn't flat like a covered one, but has no iris)
@@ -415,7 +427,7 @@ class CoveredEyeTest(unittest.TestCase):
         self.assertGreater(iris_ratio(lid, outline, (350, 500), 40), IRIS_HIDDEN_RATIO)
 
     def test_closed_eye_from_image_is_closed_not_covered(self):
-        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, OPEN, image=make_image(closed=("left",)))
+        eyes = extract_eyes(close_lids(face_with_outlines(), "left"), SIZE, SIZE, OPEN, image=make_image(closed=("left",)))
 
         self.assertTrue(eyes["left"]["closed"])
         self.assertFalse(eyes["left"]["covered"])
@@ -425,10 +437,29 @@ class CoveredEyeTest(unittest.TestCase):
     # say nothing. the image still shows which eye has no iris
     def test_wink_with_head_tilted_up(self):
         tilted = {"eyeBlinkLeft": 0.37, "eyeBlinkRight": 0.38}
-        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, tilted, image=make_image(closed=("left",)))
+        eyes = extract_eyes(close_lids(face_with_outlines(), "left"), SIZE, SIZE, tilted, image=make_image(closed=("left",)))
 
         self.assertTrue(eyes["left"]["closed"])
         self.assertFalse(eyes["right"]["closed"])
+
+    # glasses: a bright screen reflected on the lens hides the iris, but the lids are wide open.
+    # that's an open eye (it used to count as closed, both eyes at once, so tracking said "eyes closed")
+    def test_reflection_on_glasses_is_not_a_closed_eye(self):
+        eyes = extract_eyes(face_with_outlines(), SIZE, SIZE, OPEN, image=make_image(closed=("left", "right")))
+
+        self.assertGreater(eyes["left"]["iris_ratio"], IRIS_HIDDEN_RATIO)
+        self.assertGreaterEqual(eyes["left"]["openness"], LIDS_OPEN_OPENNESS)
+        self.assertFalse(eyes["left"]["closed"])
+        self.assertFalse(eyes["right"]["closed"])
+        self.assertEqual(eyes["gaze"]["eyes_used"], 2)
+
+    def test_closed_lids_without_an_iris_are_closed(self):
+        lm = close_lids(close_lids(face_with_outlines(), "left"), "right")
+        eyes = extract_eyes(lm, SIZE, SIZE, OPEN, image=make_image(closed=("left", "right")))
+
+        self.assertLess(eyes["left"]["openness"], LIDS_OPEN_OPENNESS)
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertTrue(eyes["right"]["closed"])
 
     # the image wins over the blink score in the other direction too
     def test_visible_iris_is_open_despite_high_blink_score(self):

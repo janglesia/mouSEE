@@ -56,6 +56,13 @@ COVERED_CONTRAST = 0.15
 # per-person value, the eye check wizard should tune it. see docs/EYE-CALIBRATION.md
 IRIS_HIDDEN_RATIO = 0.65
 
+# Lids this far apart (openness) mean the eye is open, whatever the iris check says. Glasses reflect the
+# screen right over the iris, and with a bright screen (the yellow calibration screen, a white web page)
+# an open eye then looks like it has no iris. The lid landmarks don't care about reflections.
+# Recordings: open 0.31-0.40 (0.27 with the head tilted up), the closed eye of a wink 0.16-0.24.
+# per-person value, the eye check wizard tunes it. see docs/EYE-CALIBRATION.md
+LIDS_OPEN_OPENNESS = 0.26
+
 # Debugging, will probably change as needed
 H_THRESH = 0.12
 V_THRESH = 0.08
@@ -325,8 +332,9 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
                 closed = False
             elif iris_visibility is not None:
                 # the image shows directly whether the iris is there, more reliable than the blink
-                # score (which tilting the head throws off)
-                closed = iris_visibility > IRIS_HIDDEN_RATIO
+                # score (which tilting the head throws off). but not when the lids are clearly apart,
+                # then the "missing" iris is a reflection on glasses, see LIDS_OPEN_OPENNESS
+                closed = iris_visibility > IRIS_HIDDEN_RATIO and openness < LIDS_OPEN_OPENNESS
 
             out[name] = {
                 "outline": (lm[list(e["outline"])].round(4).tolist()),

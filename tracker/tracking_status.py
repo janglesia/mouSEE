@@ -17,11 +17,15 @@ Returns {"state": ..., "reason": ...}:
 """
 
 # starting guesses, adjust once we have more recordings.
-# MAX_YAW / MAX_PITCH should be per person (relative to their resting head angle), see docs/EYE-CALIBRATION.md
+# the eye check sets REST_*, MAX_PITCH and MAX_YAW per person from a saved calibration, see docs/EYE-CALIBRATION.md
 EDGE_MARGIN = 0.01          # face box this close to the image edge counts as cut off (0-1)
 MAX_YAW = 35.0              # degrees, turning left/right
 MAX_PITCH = 30.0            # degrees, looking up/down. resting pitch is often -10 with the camera on top of the screen
 MIN_EYE_WIDTH_PX = 15.0     # below this the iris is only a few pixels
+# head angle when sitting normally. head_turned is measured from here, since 0 is "facing the camera"
+# and that isn't "facing the screen" when the camera is above or below it (resting pitch -8 to -10 then)
+REST_PITCH = 0.0
+REST_YAW = 0.0
 
 
 def _lost(reason):
@@ -38,7 +42,7 @@ def tracking_status(face):
         return _lost("face_partial")
 
     pose = face["pose"]
-    if abs(pose["yaw"]) > MAX_YAW or abs(pose["pitch"]) > MAX_PITCH:
+    if abs(pose["yaw"] - REST_YAW) > MAX_YAW or abs(pose["pitch"] - REST_PITCH) > MAX_PITCH:
         return _lost("head_turned")
 
     eyes = face.get("eyes")

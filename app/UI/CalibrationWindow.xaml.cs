@@ -86,6 +86,9 @@ public partial class CalibrationWindow : Window
 
     private readonly List<Ellipse> _testRings = new();
 
+    // what looking right / left answers on the current screen, see AskByLooking
+    private Action<bool>? _onChoice;
+
     // ---- events for whatever does the actual capture / fitting ----
     public event Action? CalibrationStarted;
     /// <summary>Target is on screen at its final position. The eye is still moving; don't sample yet.</summary>
@@ -118,6 +121,7 @@ public partial class CalibrationWindow : Window
     public CalibrationWindow()
     {
         InitializeComponent();
+        Choice.Chosen += yes => _onChoice?.Invoke(yes);
 
         // Cover the whole primary screen, taskbar included, so normalized target positions are screen positions.
         Left = 0;
@@ -235,14 +239,18 @@ public partial class CalibrationWindow : Window
     private void BeginButton_Click(object sender, RoutedEventArgs e) => StartSequence();
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void AcceptButton_Click(object sender, RoutedEventArgs e)
+    private void AcceptButton_Click(object sender, RoutedEventArgs e) => Accept();
+
+    private void Accept()
     {
         _sessionEnded = true; // so closing doesn't count as a cancel
         CalibrationAccepted?.Invoke();
         Close();
     }
 
-    private void TryAgainButton_Click(object sender, RoutedEventArgs e)
+    private void TryAgainButton_Click(object sender, RoutedEventArgs e) => TryAgain();
+
+    private void TryAgain()
     {
         // CalibrationStarted fires again when the user presses Begin; the backend should drop the old samples then
         _sessionStarted = false;
@@ -701,5 +709,27 @@ public partial class CalibrationWindow : Window
         };
         if (phase == Phase.Running) UpdateWarning();
         else TrackingWarningText.Text = "";
+        AskByLooking(phase);
+    }
+
+    // the intro and the results can be answered by looking, right for yes and left for no (ChoicePrompt)
+    private void AskByLooking(Phase phase)
+    {
+        switch (phase)
+        {
+            case Phase.Intro:
+                _onChoice = yes => { if (yes) StartSequence(); else Close(); };
+                Choice.Ask("Begin the calibration", "Cancel");
+                break;
+            case Phase.Result:
+                _onChoice = yes => { if (yes) Accept(); else TryAgain(); };
+                Choice.Ask("Accept this calibration", "Try again");
+                break;
+            default:
+                // while the targets move the eyes look everywhere, that mustn't answer anything
+                _onChoice = null;
+                Choice.Stop();
+                break;
+        }
     }
 }

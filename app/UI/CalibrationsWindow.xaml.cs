@@ -12,6 +12,8 @@ namespace app.UI;
 public partial class CalibrationsWindow : Window
 {
     private readonly App _app = (App)Application.Current;
+    private readonly Speaker _speaker = new();
+    private bool _askedOutLoud;
 
     // one row in the list
     public sealed record Row(string Id, string Name, string Detail, Visibility InUseVisibility);
@@ -21,10 +23,17 @@ public partial class CalibrationsWindow : Window
         InitializeComponent();
         _app.Calibrations.Changed += Refresh;
         _app.Settings.Changed += OnSettingsChanged;
+        // the startup question by looking: right to calibrate, left for default values
+        Choice.Chosen += yes =>
+        {
+            if (yes) StartNew();
+            else Close();
+        };
         Closed += (_, _) =>
         {
             _app.Calibrations.Changed -= Refresh;
             _app.Settings.Changed -= OnSettingsChanged;
+            _speaker.Dispose();
         };
         Refresh();
     }
@@ -55,6 +64,22 @@ public partial class CalibrationsWindow : Window
         AskCheckBox.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
         AskCheckBox.IsChecked = _app.Settings.Current.Calibration.AskWhenMissing;
         UpdateButtons();
+
+        if (none)
+        {
+            Choice.Ask("Calibrate now", "Use default values");
+            // the question is for people who may not be able to use a mouse, so say it too, once
+            if (!_askedOutLoud)
+            {
+                _askedOutLoud = true;
+                _ = _speaker.SayAsync("mouSEE isn't calibrated yet. To calibrate now, look to the right and hold it for three seconds. " +
+                                      "To use default values, look to the left.", CancellationToken.None);
+            }
+        }
+        else
+        {
+            Choice.Stop();
+        }
     }
 
     private string Describe(CalibrationProfile p)
@@ -90,7 +115,9 @@ public partial class CalibrationsWindow : Window
         if (ProfileList.SelectedItem is Row row) _app.Calibrations.Use(row.Id);
     }
 
-    private void NewButton_Click(object sender, RoutedEventArgs e)
+    private void NewButton_Click(object sender, RoutedEventArgs e) => StartNew();
+
+    private void StartNew()
     {
         Close();
         _app.StartCalibration();

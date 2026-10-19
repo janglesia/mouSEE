@@ -2,6 +2,7 @@ import unittest
 
 from tracker.tracking_status import (tracking_status, EDGE_MARGIN, MAX_YAW, MAX_PITCH,
                                      MIN_EYE_WIDTH_PX)
+import tracker.tracking_status as tracking_status_module
 
 
 # a face dict shaped like the one face_tracker.py builds, with only the fields tracking_status reads
@@ -52,6 +53,21 @@ class TrackingStatusTest(unittest.TestCase):
         for yaw, pitch in [(MAX_YAW - 1, 0), (-20, -10), (0, -MAX_PITCH + 1)]:
             with self.subTest(yaw=yaw, pitch=pitch):
                 self.assertEqual(tracking_status(make_face(yaw=yaw, pitch=pitch))["state"], "ok")
+
+    def test_head_turn_is_measured_from_the_resting_angle(self):
+        # the eye check sets REST_PITCH when the camera sits above the screen
+        self.addCleanup(setattr, tracking_status_module, "REST_PITCH", tracking_status_module.REST_PITCH)
+        tracking_status_module.REST_PITCH = -10.0
+        # 35 down from rest is too far even though it's within MAX_PITCH of 0
+        self.assertLost(tracking_status(make_face(pitch=-10 - MAX_PITCH - 1)), "head_turned")
+        # and 35 up from 0 is only 25 from rest
+        self.assertEqual(tracking_status(make_face(pitch=-10 + MAX_PITCH - 1))["state"], "ok")
+
+    def test_resting_yaw_too(self):
+        self.addCleanup(setattr, tracking_status_module, "REST_YAW", tracking_status_module.REST_YAW)
+        tracking_status_module.REST_YAW = 8.0
+        self.assertEqual(tracking_status(make_face(yaw=8 + MAX_YAW - 1))["state"], "ok")
+        self.assertLost(tracking_status(make_face(yaw=8 - MAX_YAW - 1)), "head_turned")
 
     # extract_eyes returned None, or the validator dropped both eyes
     def test_face_without_usable_eyes(self):
