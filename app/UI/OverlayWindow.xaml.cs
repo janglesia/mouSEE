@@ -18,8 +18,8 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_P = 0x50, VK_Q = 0x51;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -80,6 +80,7 @@ public partial class OverlayWindow : Window
             var hwnd = new WindowInteropHelper(this).Handle;
             UnregisterHotKey(hwnd, HOTKEY_QUIT);
             UnregisterHotKey(hwnd, HOTKEY_PAUSE);
+            UnregisterHotKey(hwnd, HOTKEY_CALIBRATIONS);
         };
     }
 
@@ -100,11 +101,12 @@ public partial class OverlayWindow : Window
         SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
 
         // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus),
-        // Ctrl+Alt+P pauses and unpauses. global, so they work from any app. q and p in the
-        // camera window do the same, see App.xaml.cs
+        // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations. global, so they work
+        // from any app. q, p and c in the camera window do the same, see App.xaml.cs
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         RegisterHotKey(hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, VK_Q);
         RegisterHotKey(hwnd, HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT, VK_P);
+        RegisterHotKey(hwnd, HOTKEY_CALIBRATIONS, MOD_CONTROL | MOD_ALT, VK_C);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -119,6 +121,10 @@ public partial class OverlayWindow : Window
             case HOTKEY_PAUSE:
                 handled = true;
                 ((App)Application.Current).TogglePause();
+                break;
+            case HOTKEY_CALIBRATIONS:
+                handled = true;
+                ((App)Application.Current).ShowCalibrations();
                 break;
         }
         return IntPtr.Zero;

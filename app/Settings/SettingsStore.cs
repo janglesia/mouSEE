@@ -18,7 +18,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 {
     public string FilePath { get; }
 
-    public JsonSettingsStore(string? path = null) => FilePath = path ?? FindDefaultPath();
+    public JsonSettingsStore(string? path = null) => FilePath = path ?? AppPaths.SettingsFile;
 
     public AppSettings? Load()
     {
@@ -66,22 +66,5 @@ public sealed class JsonSettingsStore : ISettingsStore
         string tmp = FilePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(settings, SettingsCatalog.Json));
         File.Move(tmp, FilePath, overwrite: true);
-    }
-
-    // app/Settings/ next to mouSEE.csproj, found by walking up from the exe (app/bin/Debug/...).
-    // if there's no project folder (a published build), Settings/ next to the exe
-    private static string FindDefaultPath()
-    {
-        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
-        {
-            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
-            {
-                if (File.Exists(Path.Combine(dir.FullName, "mouSEE.csproj")))
-                    return Path.Combine(dir.FullName, "Settings", "settings.json");
-                if (File.Exists(Path.Combine(dir.FullName, "app", "mouSEE.csproj")))
-                    return Path.Combine(dir.FullName, "app", "Settings", "settings.json");
-            }
-        }
-        return Path.Combine(AppContext.BaseDirectory, "Settings", "settings.json");
     }
 }

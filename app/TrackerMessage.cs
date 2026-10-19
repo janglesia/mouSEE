@@ -20,7 +20,7 @@ public record Pose(double Yaw, double Pitch, double Roll);
 
 public record Eyes(EyeData Left, EyeData Right, GazeData Gaze, GazeEstimate? Estimate = null);
 // the tracker sends more per eye (iris_ratio, contrast, openness, blink, covered, width_px),
-// add them here when needed. the eye check wizard will, see docs/eye-calibration.md
+// add them here when needed. the eye check wizard will, see docs/EYE-CALIBRATION.md
 // i added this gaze estimate for the bubble
 public record GazeEstimate(
     bool Valid,

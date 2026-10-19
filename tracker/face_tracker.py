@@ -17,7 +17,7 @@ Messages:
       "blendshapes":{"eyeBlinkLeft":0.02, ...51}}]}   # expression scores 0-1
   {"type":"error","message":"..."}
   {"type":"cameras","cameras":[{"index":0,"width":640,"height":480}]}   # only with --list-cameras, then it exits
-  {"type":"key","key":"q"}                   # q or p pressed in the preview window
+  {"type":"key","key":"q"}                   # q, p or c pressed in the preview window
 
 Coordinates are mirrored (like a selfie view), so moving your head right moves
 points right. Left/right in names (irises, blendshapes) mean the person's own
@@ -29,7 +29,7 @@ https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_lan
 Run standalone to test:  python face_tracker.py --preview
 """
 from eye_extractor import extract_eyes, draw_eyes, GazeSmoother, EyeValidator
-from gaze_model import estimate_gaze
+from gaze_model import estimate_gaze, load_params, DEFAULT_PARAMS
 from tracking_status import tracking_status
 
 import argparse
@@ -227,14 +227,15 @@ class Preview(threading.Thread):
             label = state.upper() + (f": {tracking['reason']}" if tracking["reason"] else "")
             color = {"ok": (0, 200, 0), "eyes_closed": (0, 165, 255)}.get(state, (0, 0, 255))
             cv2.putText(view, label, (10, fh - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            cv2.imshow("Tracker preview (q to quit, p to pause)", view)
-            # the app quits on q and pauses on p. on its own (make tracker) q closes this and p does nothing
+            cv2.imshow("Tracker preview (q to quit, p to pause, c for calibrations)", view)
+            # the app quits on q, pauses on p and opens the calibrations on c.
+            # on its own (make tracker) q closes this and p and c do nothing
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 emit({"type": "key", "key": "q"})
                 self.closed.set()
-            elif key == ord("p"):
-                emit({"type": "key", "key": "p"})
+            elif key in (ord("p"), ord("c")):
+                emit({"type": "key", "key": chr(key)})
             # 30 fps is plenty for a preview, leave the rest of the CPU for tracking
             time.sleep(max(0.0, 1 / 30 - (time.monotonic() - shown_at)))
         cv2.destroyAllWindows()
@@ -256,6 +257,8 @@ def main():
     parser.add_argument("--fps", type=int, default=60, help="camera frame rate (default 60)")
     parser.add_argument("--preview", action="store_true",
                         help="show a debug window with landmarks drawn")
+    parser.add_argument("--calibration", metavar="FILE",
+                        help="saved calibration to use (app/Calibration/Saved/*.json), default values without one")
     parser.add_argument("--list-cameras", action="store_true",
                         help="print the cameras that open as one JSON line and exit")
     args = parser.parse_args()
@@ -263,6 +266,15 @@ def main():
     if args.list_cameras:
         emit({"type": "cameras", "cameras": list_cameras()})
         return 0
+
+    gaze_params = DEFAULT_PARAMS
+    if args.calibration:
+        try:
+            gaze_params = load_params(args.calibration)
+            log(f"using calibration {args.calibration}")
+        except (OSError, ValueError) as e:
+            # carry on with the defaults, a broken calibration file shouldn't stop tracking
+            log(f"can't read calibration {args.calibration}, using default values: {e}")
 
     if not Path(args.model).exists():
         emit({"type": "error", "message": f"Model not found: {args.model}"})
@@ -368,11 +380,11 @@ def main():
                         "ok": False,
                         "reason": "extract_eyes_returned_none"
                     }
-                    face["gaze_estimate"] = estimate_gaze(None)
+                    face["gaze_estimate"] = estimate_gaze(None, gaze_params)
                 else:
                     # Eye data exists, so estimate gaze normally.
                     face["eyes"]["estimate"] = estimate_gaze(
-                        face["eyes"]
+                        face["eyes"], gaze_params
                     )
                     face["eye_extraction"] = {
                         "ok": True,

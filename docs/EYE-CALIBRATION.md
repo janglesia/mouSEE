@@ -146,7 +146,7 @@ The tracker needs a way to load them. The values are module-level constants, and
 ```python
 import eye_extractor, tracking_status
 
-parser.add_argument("--eye-thresholds", help="JSON file with calibrated values, see docs/eye-calibration.md")
+parser.add_argument("--eye-thresholds", help="JSON file with calibrated values, see docs/EYE-CALIBRATION.md")
 ...
 if args.eye_thresholds:
     for name, value in json.load(open(args.eye_thresholds)).items():

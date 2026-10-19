@@ -107,6 +107,9 @@ public sealed record CalibrationSettings
 
     [Setting("Run accuracy check", "Shows 4 extra targets after calibration to measure how accurate it is.")]
     public bool RunAccuracyCheck { get; init; }
+
+    [Setting("Ask to calibrate", "When there's no calibration yet, asks on startup if you want to make one. Without one mouSEE uses default values.")]
+    public bool AskWhenMissing { get; init; } = true;
 }
 
 public sealed record AdvancedSettings

@@ -1,8 +1,12 @@
+import json
 import math
+import tempfile
 import unittest
+from pathlib import Path
 
 from tracker.eye_extractor import extract_eyes, extract_feature_vector
 from tracker.gaze_model import (estimate_gaze, estimate_gaze_from_features, eye_angle, GazeParams,
+                                params_from_dict, load_params, DEFAULT_PARAMS,
                                 K_H, K_V, MAX_SIN, GAIN_X, GAIN_Y)
 # reuse the fake landmark builder
 from tests.test_eye_extractor import build_eye
@@ -376,6 +380,57 @@ class EndToEndTest(unittest.TestCase):
         result = estimate_gaze(eyes)
         self.assertEqual(result["eyes_used"], 1)
         self.assertIsNone(result["left"])
+
+
+class SavedCalibrationTest(unittest.TestCase):
+    """params_from_dict / load_params, for the files in app/Calibration/Saved/"""
+
+    def test_empty_is_the_defaults(self):
+        self.assertEqual(params_from_dict({}), DEFAULT_PARAMS)
+        self.assertEqual(params_from_dict(None), DEFAULT_PARAMS)
+
+    def test_saved_values_replace_the_defaults(self):
+        p = params_from_dict({"k_h": 0.6, "center_y": 0.45, "left_h_baseline": -0.02})
+        self.assertEqual((p.k_h, p.center_y, p.left_h_baseline), (0.6, 0.45, -0.02))
+        self.assertEqual(p.k_v, DEFAULT_PARAMS.k_v)
+
+    def test_unknown_and_bad_values_are_ignored(self):
+        p = params_from_dict({"k_h": "lots", "k_v": float("nan"), "something_else": 3, "gain_x": True})
+        self.assertEqual(p, DEFAULT_PARAMS)
+
+    def test_impossible_values_give_the_defaults(self):
+        # k_h = 0 would divide by zero
+        self.assertEqual(params_from_dict({"k_h": 0, "center_x": 0.4}), DEFAULT_PARAMS)
+
+    def test_not_a_dict(self):
+        self.assertEqual(params_from_dict([1, 2]), DEFAULT_PARAMS)
+
+    def test_calibrated_params_change_the_estimate(self):
+        eyes = {"left": make_eye(h=0.1), "right": make_eye(h=0.1)}
+        default = estimate_gaze(eyes)
+        shifted = estimate_gaze(eyes, params_from_dict({"center_x": 0.3}))
+        self.assertAlmostEqual(shifted["x"], default["x"] - 0.2, places=3)
+
+    def test_load_params_reads_the_gaze_part_of_the_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "cal.json"
+            path.write_text(json.dumps({"version": 1, "name": "desk", "gaze": {"k_v": 0.8}}), encoding="utf-8")
+            self.assertEqual(load_params(path).k_v, 0.8)
+
+    def test_load_params_with_no_gaze_part(self):
+        # what the app saves until calibration works the numbers out
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "cal.json"
+            path.write_text('{"version": 1, "gaze": {}}', encoding="utf-8")
+            self.assertEqual(load_params(path), DEFAULT_PARAMS)
+
+    def test_load_params_broken_file_raises(self):
+        # face_tracker.py catches this and uses the defaults
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "cal.json"
+            path.write_text("{ not json", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_params(path)
 
 
 if __name__ == "__main__":

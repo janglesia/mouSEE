@@ -13,3 +13,6 @@ obj/
 # everyone's own settings, written by the app (defaults are in app/Settings/AppSettings.cs)
 app/Settings/settings.json
 app/Settings/settings.json.*
+
+# everyone's own calibrations, made by the app (see docs/SAVED-CALIBRATIONS.md)
+app/Calibration/Saved/

@@ -360,21 +360,29 @@ public class TrackerArgsTests
             Advanced = new() { DetectionConfidence = 0.3 },
         };
         Assert.Equal(["--camera", "1", "--width", "1280", "--height", "720", "--fps", "30", "--min-confidence", "0.3"],
-            TrackerArgs.Build(settings, []));
+            TrackerArgs.Build(settings, null, []));
     }
 
     [Fact]
     public void Preview_only_when_turned_on()
     {
-        Assert.DoesNotContain("--preview", TrackerArgs.Build(new AppSettings(), []));
-        Assert.Contains("--preview", TrackerArgs.Build(new AppSettings { Camera = new() { ShowPreview = true } }, []));
+        Assert.DoesNotContain("--preview", TrackerArgs.Build(new AppSettings(), null, []));
+        Assert.Contains("--preview", TrackerArgs.Build(new AppSettings { Camera = new() { ShowPreview = true } }, null, []));
+    }
+
+    [Fact]
+    public void Calibration_file_is_passed_when_there_is_one()
+    {
+        Assert.DoesNotContain("--calibration", TrackerArgs.Build(new AppSettings(), null, []));
+        var args = TrackerArgs.Build(new AppSettings(), @"C:\cal\a.json", []);
+        Assert.Equal(["--calibration", @"C:\cal\a.json"], args[^2..]);
     }
 
     [Fact]
     public void Command_line_comes_last_so_it_wins()
     {
         // argparse keeps the last value it sees
-        var args = TrackerArgs.Build(new AppSettings { Camera = new() { Index = 1 } }, ["--camera", "2"]);
+        var args = TrackerArgs.Build(new AppSettings { Camera = new() { Index = 1 } }, null, ["--camera", "2"]);
         Assert.Equal(["--camera", "2"], args[^2..]);
     }
 }

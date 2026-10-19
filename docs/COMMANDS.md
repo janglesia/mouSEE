@@ -103,6 +103,7 @@ The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from 
 --num-faces N         max faces to track (default 1)
 --model PATH          use a different model file
 --list-cameras        print the cameras that open as JSON and exit
+--calibration FILE    use a saved calibration (app/Calibration/Saved/*.json), see docs/SAVED-CALIBRATIONS.md
 ```
 
 If the camera can't do what you ask for, it picks the closest mode it has.

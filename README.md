@@ -41,11 +41,16 @@ mouSEE/
     App.xaml, App.xaml.cs    starts the app and opens the overlay (or the calibration window)
     TrackerClient.cs         starts the Python tracker and reads its messages
     TrackerMessage.cs        the shape of the tracker's JSON messages
+    AppPaths.cs              where settings and calibrations are saved
     UI/
       OverlayWindow.xaml(.cs)      readout in the bottom left corner of the screen
       CalibrationWindow.xaml(.cs)  nine-point calibration screen (UI only so far)
+      CalibrationsWindow.xaml(.cs) the saved calibrations: pick, delete, make a new one
     Calibration/
       CalibrationTarget.cs   one calibration point and its position on screen
+      CalibrationProfile.cs  one saved calibration
+      CalibrationStore.cs    the saved calibrations, which one is in use
+      Saved/                 your calibrations (made by the app, not in git)
     Gaze/
       TrackingMonitor.cs     decides when tracking counts as lost, and what to tell the user
     Settings/
@@ -67,7 +72,16 @@ mouSEE/
     .venv/                   Python virtual environment (created by make setup, not in git)
   persistence/
     database.py              SQLite schema (users, settings, calibration)
-  docs/                      setup guide, command reference, settings (SETTINGS.md), UI notes, eye check design (eye-calibration.md)
+  docs/
+    SETUP.md                 installing everything, step by step
+    COMMANDS.md              the commands make runs, for running things by hand
+    SETTINGS.md              every setting, and how to add one
+    SAVED-CALIBRATIONS.md    how calibrations are saved and which one is used
+    EYE-CALIBRATION.md       design for the eye check wizard (not built yet)
+    GEOMETRIC-GAZE-ESTIMATION.md  how iris movement becomes a point on the screen
+    UI/
+      CALIBRATION-WINDOW-OVERVIEW.md      the calibration window: running it, changelog, what's left
+      CALIBRATION-POINT-SPECIFICATIONS.md where the calibration targets are on screen
   tests/
     test_eye_extractor.py    tests for eye_extractor.py
     test_tracking_status.py  tests for tracking_status.py
@@ -81,13 +95,15 @@ mouSEE/
 
 **TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes it the camera settings and the app's command line options, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
 
-**OverlayWindow** is a small always-on-top readout in the bottom left corner: a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses. In the camera window, plain **q** and **p** do the same.
+**OverlayWindow** is a small always-on-top readout in the bottom left corner: a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses, **Ctrl+Alt+C** opens the saved calibrations. In the camera window, plain **q**, **p** and **c** do the same.
 
 **TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything, and knows when the user paused tracking. `CanMoveCursor` is what the cursor code should check later. The timings come from the settings.
 
 **Settings** are in `app/Settings/`, see [Settings](#settings).
 
-**CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/calibration.txt`.
+**CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/CALIBRATION-WINDOW-OVERVIEW.md`.
+
+**Saved calibrations** are kept in `app/Calibration/Saved/`, one file each, and the last one you used is the one in use. If there are none yet, mouSEE asks on startup if you want to calibrate, otherwise it uses default values. **CalibrationsWindow** (Ctrl+Alt+C) lists them so you can switch, delete or make a new one. See [docs/SAVED-CALIBRATIONS.md](docs/SAVED-CALIBRATIONS.md).
 
 **face_tracker.py** opens the webcam at 1920x1080 / 60 fps (or the closest thing the camera supports), runs MediaPipe Face Landmarker on every frame and prints the results. Coordinates are mirrored like a selfie camera, but "left eye" always means your actual left eye. With `--preview` it also opens a window showing what it sees. The comment at the top of the file describes the output format.
 
@@ -171,7 +187,7 @@ gaze h +0.012  v -0.034  center
 
 Everything should change as you move. A camera window also opens, showing the landmarks on your face. It only updates at 30 fps to save CPU, the overlay shows the actual tracking speed.
 
-To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. The Ctrl+Alt keys work from any program, q and p only while the camera window is focused.
+To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations. The Ctrl+Alt keys work from any program, q, p and c only while the camera window is focused.
 
 ### Calibration screen
 

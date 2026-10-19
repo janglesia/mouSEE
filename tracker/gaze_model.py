@@ -8,8 +8,9 @@ Not handled yet: head movement.
 The numbers in GazeParams are placeholders until calibration provides them per person.
 """
 
+import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 # k from the module docstring. Starting guesses, calibration should tune them per person.
 # may need to make it different for each eye depending on geometry of the face
@@ -407,3 +408,27 @@ def estimate_gaze_from_features(feature_result, params=None):
         }
 
     return estimate_gaze(eyes, params)
+
+
+# ---------------------------------------------------------
+# SAVED CALIBRATIONS
+# ---------------------------------------------------------
+
+def params_from_dict(values):
+    """GazeParams with the numbers a calibration saved (same names as the GazeParams fields).
+    Anything missing, unknown or not a finite number keeps its default, so an empty dict gives DEFAULT_PARAMS."""
+    if not isinstance(values, dict):
+        return DEFAULT_PARAMS
+    known = {f.name for f in fields(GazeParams)}
+    picked = {name: float(value) for name, value in values.items()
+              if name in known and _finite_number(value)}
+    params = GazeParams(**picked)
+    # e.g. k_h = 0 would divide by zero later. throw the whole thing away rather than half of it
+    return DEFAULT_PARAMS if _validate_params(params) else params
+
+
+def load_params(path):
+    """GazeParams from a saved calibration file (app/Calibration/Saved/*.json, the numbers are under "gaze")."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return params_from_dict(data.get("gaze") if isinstance(data, dict) else None)

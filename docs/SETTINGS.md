@@ -25,8 +25,10 @@ Command line options win over the file for that run, e.g. `make run ARGS="--came
 | Ctrl+Alt+P | anywhere | pause / unpause (`tracking.paused`) |
 | q | camera window | quit |
 | p | camera window | pause / unpause |
+| Ctrl+Alt+C | anywhere | the calibrations window, see [SAVED-CALIBRATIONS.md](SAVED-CALIBRATIONS.md) |
+| c | camera window | the calibrations window |
 
-The Ctrl+Alt ones work from any program. Plain q and p only work while the camera window is focused, otherwise typing a q anywhere would quit mouSEE.
+The Ctrl+Alt ones work from any program. Plain q, p and c only work while the camera window is focused, otherwise typing a q anywhere would quit mouSEE.
 
 ## All settings
 
@@ -75,6 +77,7 @@ The Ctrl+Alt ones work from any program. Plain q and p only work while the camer
 |---------|---------|---------|------|------|--------------|
 | `calibration.targetDwellMs` | `1200` | 500 to 5000 ms | next calibration | yes | How long each target is looked at (the ring filling up). Longer gives calibration more samples. |
 | `calibration.runAccuracyCheck` | `false` | `true` / `false` | next time the calibration window opens | yes | 4 extra targets after calibration to measure accuracy. Leave it off until something measures the error, otherwise you look at 4 targets for nothing. |
+| `calibration.askWhenMissing` | `true` | `true` / `false` | next start | yes | When there are no saved calibrations, asks on startup if you want to make one. Without one mouSEE uses default values. The "ask me" box in the calibrations window sets it. See [SAVED-CALIBRATIONS.md](SAVED-CALIBRATIONS.md). |
 
 ### Advanced
 
@@ -96,7 +99,7 @@ Tuning, most people won't need to touch these.
   "clicking": { "method": "dwell", "dwellMs": 1000, "dwellRadiusPx": 50 },
   "tracking": { "paused": false },
   "overlay": { "showStatusBar": true, "showDebugReadout": true },
-  "calibration": { "targetDwellMs": 1200, "runAccuracyCheck": false },
+  "calibration": { "targetDwellMs": 1200, "runAccuracyCheck": false, "askWhenMissing": true },
   "advanced": { "lostAfterMs": 500, "recoverFrames": 10, "notRespondingAfterMs": 1000, "detectionConfidence": 0.5 }
 }
 ```
@@ -138,7 +141,7 @@ Values are always in range when you read them, `Update` clamps whatever you give
 
 What already listens to `Changed`:
 
-- `App.xaml.cs` restarts the tracker when its options change (camera, detection confidence)
+- `App.xaml.cs` restarts the tracker when its options change (camera, detection confidence, the calibration in use)
 - `OverlayWindow` pauses, shows or hides the status bar, readout and bubble, and passes new timings to its `TrackingMonitor`
 - `CalibrationWindow` passes new timings to its `TrackingMonitor`
 
