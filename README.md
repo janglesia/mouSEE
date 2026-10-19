@@ -48,8 +48,16 @@ mouSEE/
       CalibrationTarget.cs   one calibration point and its position on screen
     Gaze/
       TrackingMonitor.cs     decides when tracking counts as lost, and what to tell the user
+    Settings/
+      AppSettings.cs         every user setting with its default, range and description
+      SettingsCatalog.cs     the list of all settings, for a settings screen
+      SettingsService.cs     the current settings, changing them, telling the app they changed
+      SettingsStore.cs       saving them (settings.json)
+      TrackerArgs.cs         turns the camera settings into tracker options
+      SettingAttribute.cs    [Setting], [Section] and [Choice]
+      settings.json          your settings (made by the app, not in git)
     assets/mouSEE-logo.png   logo, used as the calibration target
-    Input/, Settings/        empty for now, see below
+    Input/                   empty for now, see below
   tracker/                   Python face tracking
     face_tracker.py          reads the webcam, finds the face, sends results to the app
     eye_extractor.py         eye measurements, open/closed and winks, glitch filter, feature vectors
@@ -59,21 +67,25 @@ mouSEE/
     .venv/                   Python virtual environment (created by make setup, not in git)
   persistence/
     database.py              SQLite schema (users, settings, calibration)
-  docs/                      setup guide, command reference, UI notes, eye check design (eye-calibration.md)
+  docs/                      setup guide, command reference, settings (SETTINGS.md), UI notes, eye check design (eye-calibration.md)
   tests/
     test_eye_extractor.py    tests for eye_extractor.py
     test_tracking_status.py  tests for tracking_status.py
     test_gaze_model.py       tests for gaze_model.py
+    test_face_tracker.py     tests for face_tracker.py (camera listing)
+    app.Tests/               tests for the C# app (settings, TrackingMonitor)
   Makefile                   shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
 **App.xaml.cs** starts the app. Normally it opens the overlay; with `--calibration-preview` it opens the calibration window instead.
 
-**TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes the app's command line options on to it, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
+**TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes it the camera settings and the app's command line options, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
 
-**OverlayWindow** is a small always-on-top readout in the bottom left corner: a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app.
+**OverlayWindow** is a small always-on-top readout in the bottom left corner: a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses. In the camera window, plain **q** and **p** do the same.
 
-**TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything. `CanMoveCursor` is what the cursor code should check later.
+**TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything, and knows when the user paused tracking. `CanMoveCursor` is what the cursor code should check later. The timings come from the settings.
+
+**Settings** are in `app/Settings/`, see [Settings](#settings).
 
 **CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/calibration.txt`.
 
@@ -92,7 +104,12 @@ mouSEE/
 The empty folders are placeholders for features that haven't been written yet. Each has a `.gitkeep` file so git keeps the folder; delete it once real files go in.
 
 - `app/Input/`: moving the cursor and clicking (e.g. blink to click)
-- `app/Settings/`: user settings and saving them between runs (`persistence/database.py` has the database schema for this)
+
+## Settings
+
+Settings are saved in `app/Settings/settings.json`, which the app creates with the defaults the first time it runs. It's not in git, everyone has their own. There's no settings screen yet, so edit the file and restart the app.
+
+[docs/SETTINGS.md](docs/SETTINGS.md) lists every setting with its default and what it does, and explains how to use them in code, hook them up to a settings screen, and add new ones.
 
 ## Getting started
 
@@ -131,7 +148,7 @@ An overlay shows up in the bottom left corner of the screen. The coloured bar at
 | Green | Tracking | |
 | Orange | Hold on | "Face found, hold still for a moment", "Eyes closed" |
 | Red | Something's wrong | "Can't see your face, sit in front of the camera", "Head turned too far, face the screen", "Eyes are covered", "Tracker not responding" |
-| Grey | Starting up | "Starting camera..." |
+| Grey | Starting up, or paused | "Starting camera...", "Paused" |
 
 Short problems like a blink or a one-frame glitch don't show up: something has to be wrong for half a second before the bar turns red, and after a problem it waits for a moment of good tracking before going green again. The rules are in `app/Gaze/TrackingMonitor.cs`.
 
@@ -154,7 +171,7 @@ gaze h +0.012  v -0.034  center
 
 Everything should change as you move. A camera window also opens, showing the landmarks on your face. It only updates at 30 fps to save CPU, the overlay shows the actual tracking speed.
 
-To quit, press **Ctrl+Alt+Q**. Pressing `q` in the camera window only stops the tracker, the overlay then says "Tracker exited" and stays open until Ctrl+Alt+Q.
+To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. The Ctrl+Alt keys work from any program, q and p only while the camera window is focused.
 
 ### Calibration screen
 
@@ -169,10 +186,17 @@ Opens the nine-point calibration screen instead of the overlay. It's only a walk
 Run from the project folder:
 
 ```bash
-tracker/.venv/Scripts/python -m unittest tests.test_eye_extractor tests.test_tracking_status -v
+make test
 ```
 
-Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases. `test_tracking_status` checks each ok / eyes_closed / lost case.
+That runs both of these, which also work on their own:
+
+```bash
+tracker/.venv/Scripts/python -m unittest discover -s tests -v   # Python
+dotnet test tests/app.Tests                                     # C#
+```
+
+Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The C# tests cover the settings (defaults, clamping, the JSON file, command line overriding the file) and TrackingMonitor (timings from the settings, pause and resume). The tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases. `test_tracking_status` checks each ok / eyes_closed / lost case.
 
 ## Make commands
 
@@ -184,7 +208,9 @@ make setup      # create .venv, install packages, download model, build app
 make build      # build the C# app
 make run        # run the app with the camera window
 make tracker    # run the tracker on its own with the camera window
-make clean      # delete build output (app/bin, app/obj, __pycache__)
+make test       # run the Python and C# unit tests
+make cameras    # list the cameras the tracker can open (for camera.index in app/Settings/settings.json)
+make clean      # delete build output (app/bin, app/obj, tests/app.Tests/bin and obj, __pycache__)
 make reset      # delete everything generated (build output, .venv, model) and set it all up again
 ```
 
@@ -213,14 +239,22 @@ make tracker ARGS="--min-confidence 0.3"
 
 ### Switching cameras
 
-By default the first camera Windows finds is used (camera `0`). To use a different one, pass `--camera` with its number:
+By default the first camera Windows finds is used (camera `0`). Cameras are numbered from 0 in the order Windows lists them, so a laptop's built-in webcam is usually `0` and a USB webcam `1`. To see which numbers there are:
+
+```bash
+make cameras
+```
+
+That prints something like `{"type":"cameras","cameras":[{"index":0,"width":640,"height":480},{"index":1,...}]}`. It doesn't know the camera names, so if there's more than one, try them until the window shows the one you want.
+
+To always use a different camera, set `camera.index` in `app/Settings/settings.json` (see [docs/SETTINGS.md](docs/SETTINGS.md)). To use one just for a single run, pass `--camera`:
 
 ```bash
 make run ARGS="--camera 1"
 make tracker ARGS="--camera 1"
 ```
 
-Cameras are numbered from 0 in the order Windows lists them, so a laptop's built-in webcam is usually `0` and a USB webcam `1`. There's no list of which number is which, so try `1`, `2`, ... until the window shows the camera you want. If a number doesn't exist you'll get "Could not open camera N".
+If a number doesn't exist you'll get "Could not open camera N".
 
 `make reset` is the fix for most "it worked yesterday" problems. Close the app first, otherwise Windows won't let it delete files that are in use.
 

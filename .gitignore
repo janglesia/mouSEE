@@ -9,3 +9,7 @@ obj/
 
 # local database created by persistence/database.py
 *.db
+
+# everyone's own settings, written by the app (defaults are in app/Settings/AppSettings.cs)
+app/Settings/settings.json
+app/Settings/settings.json.*

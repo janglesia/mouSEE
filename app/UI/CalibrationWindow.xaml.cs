@@ -8,6 +8,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using app.Calibration;
 using app.Gaze;
+using app.Settings;
 
 namespace app.UI;
 
@@ -17,7 +18,7 @@ public partial class CalibrationWindow : Window
     private const double EdgeMargin = 0.08;  // outer targets sit this far (fraction of screen) from the edges
     private const int GlideMs = 500;         // target moves to its next position
     private const int SettleMs = 700;        // eyes land on the target; logo shrinks to pull focus. NOT sampled
-    private const int DwellMs = 1200;        // ring fills; this is when a backend should collect samples
+    // ring fill time (when a backend should collect samples) is the Calibration.TargetDwellMs setting
     private const double StartScale = 1.5;   // logo starts this much larger and shrinks to 1.0
 
     // ---- results tuning (starting guesses, adjust once there are real numbers) ----
@@ -62,8 +63,11 @@ public partial class CalibrationWindow : Window
     private CancellationTokenSource? _cts;
     private bool _sessionStarted;
     private bool _sessionEnded;
-    // decides how long a tracking problem has lasted (shared logic in app/Gaze); we only show its verdict
-    private readonly TrackingMonitor _monitor = new();
+    private readonly SettingsService _settings = ((App)Application.Current).Settings;
+    private int _dwellMs; // Calibration.TargetDwellMs, read when a run starts
+    // decides how long a tracking problem has lasted (shared logic in app/Gaze); we only show its verdict.
+    // never paused, pausing is for the cursor and calibration needs tracking
+    private readonly TrackingMonitor _monitor = new(((App)Application.Current).Settings.Current.Advanced);
     private readonly DispatcherTimer _timeoutTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
     // measured while the ring is filling
@@ -86,7 +90,7 @@ public partial class CalibrationWindow : Window
     public event Action? CalibrationStarted;
     /// <summary>Target is on screen at its final position. The eye is still moving; don't sample yet.</summary>
     public event Action<CalibrationTarget>? TargetPresented;
-    /// <summary>Settle time is over and the ring starts filling. Sample for DwellMs from here.</summary>
+    /// <summary>Settle time is over and the ring starts filling. Sample for Calibration.TargetDwellMs from here.</summary>
     public event Action<CalibrationTarget>? TargetCaptureStarted;
     /// <summary>The ring is full. Stop sampling this target.</summary>
     public event Action<CalibrationTarget>? TargetAccepted;
@@ -101,8 +105,9 @@ public partial class CalibrationWindow : Window
     /// <summary>
     /// Set to true before the user presses Begin to show 4 extra accuracy-check targets after the calibration targets.
     /// Leave it false until a backend exists that can measure the error, otherwise the user waits for nothing.
+    /// Starts out as the "Run accuracy check" setting.
     /// </summary>
-    public bool RunValidation { get; set; }
+    public bool RunValidation { get; set; } = ((App)Application.Current).Settings.Current.Calibration.RunAccuracyCheck;
 
     /// <summary>
     /// Maps a tracker frame to a gaze position on screen (0-1 on both axes), or null if there isn't one.
@@ -123,6 +128,7 @@ public partial class CalibrationWindow : Window
         _tracker.MessageReceived += OnTrackerMessage;
         _tracker.Failed += OnTrackerFailed;
         _monitor.Changed += OnMonitorChanged;
+        _settings.Changed += OnSettingsChanged;
         _timeoutTimer.Tick += (_, _) => _monitor.CheckTimeout(); // frames stopping can't be noticed any other way
         _timeoutTimer.Start();
 
@@ -130,10 +136,7 @@ public partial class CalibrationWindow : Window
         {
             Activate();
             Focus();
-            // face_tracker.py rejects flags it doesn't know, so don't pass it our own --calibration-preview
-            await _tracker.RunAsync(Environment.GetCommandLineArgs().Skip(1)
-                .Where(a => !a.Equals("--calibration-preview", StringComparison.OrdinalIgnoreCase))
-                .ToArray());
+            await ((App)Application.Current).StartTrackerAsync();
         };
 
         Closing += (_, _) =>
@@ -151,6 +154,7 @@ public partial class CalibrationWindow : Window
             _tracker.MessageReceived -= OnTrackerMessage;
             _tracker.Failed -= OnTrackerFailed;
             _monitor.Changed -= OnMonitorChanged;
+            _settings.Changed -= OnSettingsChanged;
             _timeoutTimer.Stop();
         };
 
@@ -278,6 +282,11 @@ public partial class CalibrationWindow : Window
         }
     }
 
+    private void OnSettingsChanged(AppSettings old, AppSettings now)
+    {
+        if (old.Advanced != now.Advanced) _monitor.Configure(now.Advanced);
+    }
+
     private void OnTrackerFailed(string reason)
     {
         _monitor.OnTrackerStopped(reason);
@@ -370,6 +379,7 @@ public partial class CalibrationWindow : Window
 
         _sessionStarted = true;
         _sessionEnded = false;
+        _dwellMs = _settings.Current.Calibration.TargetDwellMs; // same for every target in a run
         _backendCompletedTargets = null;
         _backendTotalTargets = null;
         _backendStatus = null;
@@ -484,9 +494,9 @@ public partial class CalibrationWindow : Window
         try
         {
             var sw = Stopwatch.StartNew();
-            while (sw.ElapsedMilliseconds < DwellMs)
+            while (sw.ElapsedMilliseconds < _dwellMs)
             {
-                SetRingProgress(sw.ElapsedMilliseconds / (double)DwellMs);
+                SetRingProgress(sw.ElapsedMilliseconds / (double)_dwellMs);
                 await Task.Delay(16, ct);
             }
             SetRingProgress(1);

@@ -5,20 +5,21 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using app.Gaze;
+using app.Settings;
 using System.Windows.Controls;
 
 namespace app.UI;
 
 public partial class OverlayWindow : Window
 {
-    // ---- Win32 (click-through + quit hotkey) ----
+    // ---- Win32 (click-through + hotkeys) ----
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TRANSPARENT = 0x00000020; // mouse clicks pass through
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_ID = 1;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_Q = 0x51;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_P = 0x50, VK_Q = 0x51;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -30,13 +31,14 @@ public partial class OverlayWindow : Window
 
     // ---- Tracker (shared, owned by App) ----
     private readonly TrackerClient _tracker = ((App)Application.Current).Tracker;
+    private readonly SettingsService _settings = ((App)Application.Current).Settings;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private long _lastUpdateMs, _fpsWindowStartMs;
     private int _framesInWindow;
     private double _fps;
 
     // ---- Tracking status bar ----
-    private readonly TrackingMonitor _monitor = new();
+    private readonly TrackingMonitor _monitor;
     // frames stopping can't be noticed from OnMessage, so check on a timer
     private readonly DispatcherTimer _timeoutTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private static readonly Brush Green = Frozen("#2E7D32"), Orange = Frozen("#EF6C00"),
@@ -50,8 +52,12 @@ public partial class OverlayWindow : Window
         //SizeChanged += (_, _) => PositionBottomLeft();
         //I made the overlay fullscreen for the gaze bubble so the line above is obsolete but i didn't want to delete in case we need to change things
 
+        _monitor = new TrackingMonitor(_settings.Current.Advanced, _settings.Current.Tracking.Paused);
         _monitor.Changed += UpdateStatusBar;
+        UpdateStatusBar(); // could start out paused
+        ApplyOverlaySettings(_settings.Current.Overlay);
         _timeoutTimer.Tick += (_, _) => _monitor.CheckTimeout();
+        _settings.Changed += OnSettingsChanged;
 
         Loaded += async (_, _) =>
         {
@@ -61,17 +67,19 @@ public partial class OverlayWindow : Window
             _tracker.LogReceived += OnLog;
             _tracker.Failed += OnFailed;
             // no-op if something else already started the tracker
-            await _tracker.RunAsync(Environment.GetCommandLineArgs().Skip(1).ToArray());
+            await ((App)Application.Current).StartTrackerAsync();
         };
 
         Closed += (_, _) =>
         {
             _timeoutTimer.Stop();
+            _settings.Changed -= OnSettingsChanged;
             _tracker.MessageReceived -= OnMessage;
             _tracker.LogReceived -= OnLog;
             _tracker.Failed -= OnFailed;
             var hwnd = new WindowInteropHelper(this).Handle;
-            UnregisterHotKey(hwnd, HOTKEY_ID);
+            UnregisterHotKey(hwnd, HOTKEY_QUIT);
+            UnregisterHotKey(hwnd, HOTKEY_PAUSE);
         };
     }
 
@@ -91,19 +99,42 @@ public partial class OverlayWindow : Window
         int style = GetWindowLong(hwnd, GWL_EXSTYLE);
         SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
 
-        // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus)
+        // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus),
+        // Ctrl+Alt+P pauses and unpauses. global, so they work from any app. q and p in the
+        // camera window do the same, see App.xaml.cs
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
-        RegisterHotKey(hwnd, HOTKEY_ID, MOD_CONTROL | MOD_ALT, VK_Q);
+        RegisterHotKey(hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, VK_Q);
+        RegisterHotKey(hwnd, HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT, VK_P);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+        if (msg != WM_HOTKEY) return IntPtr.Zero;
+        switch (wParam.ToInt32())
         {
-            handled = true;
-            Close();
+            case HOTKEY_QUIT:
+                handled = true;
+                Close();
+                break;
+            case HOTKEY_PAUSE:
+                handled = true;
+                ((App)Application.Current).TogglePause();
+                break;
         }
         return IntPtr.Zero;
+    }
+
+    private void OnSettingsChanged(AppSettings old, AppSettings now)
+    {
+        if (old.Advanced != now.Advanced) _monitor.Configure(now.Advanced);
+        if (old.Tracking.Paused != now.Tracking.Paused) _monitor.SetPaused(now.Tracking.Paused);
+        if (old.Overlay != now.Overlay) ApplyOverlaySettings(now.Overlay);
+    }
+
+    private void ApplyOverlaySettings(OverlaySettings overlay)
+    {
+        StatusBar.Visibility = overlay.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
+        DebugPanel.Visibility = overlay.ShowDebugReadout ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---- Tracker events ----
@@ -119,7 +150,8 @@ public partial class OverlayWindow : Window
     {
         var estimate = msg.Faces?.FirstOrDefault()?.Eyes?.Estimate;
 
-        if (estimate is not { Valid: true, X: double x, Y: double y })
+        if (!_settings.Current.Cursor.ShowGazeBubble || _monitor.State == TrackingState.Paused
+            || estimate is not { Valid: true, X: double x, Y: double y })
         {
             GazeBubble.Visibility = Visibility.Collapsed;
             return;
@@ -185,7 +217,7 @@ public partial class OverlayWindow : Window
         StatusBar.Background = _monitor.State switch
         {
             TrackingState.Tracking or TrackingState.Uncertain => Green,
-            TrackingState.Starting => Grey,
+            TrackingState.Starting or TrackingState.Paused => Grey,
             // closed eyes aren't an error, just nothing to track
             TrackingState.Recovering => Orange,
             TrackingState.Lost when _monitor.Reason == "eyes_closed" => Orange,

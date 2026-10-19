@@ -55,6 +55,9 @@ cd tracker
 # Track up to 2 faces
 .venv/Scripts/python face_tracker.py --preview --num-faces 2
 
+# List the cameras that open, as one JSON line (for camera.index in app/Settings/settings.json)
+.venv/Scripts/python face_tracker.py --list-cameras
+
 # Use a model file from somewhere else
 .venv/Scripts/python face_tracker.py --preview --model C:/path/to/face_landmarker.task
 ```
@@ -68,7 +71,7 @@ Options can be combined in any order.
 ```bash
 cd app
 
-# Run with just the overlay (Ctrl+Alt+Q to quit)
+# Run with just the overlay (Ctrl+Alt+Q to quit, Ctrl+Alt+P to pause tracking)
 dotnet run
 
 # Run and also show the camera window
@@ -99,6 +102,7 @@ The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from 
 --min-confidence X    detection threshold, 0-1 (default 0.5)
 --num-faces N         max faces to track (default 1)
 --model PATH          use a different model file
+--list-cameras        print the cameras that open as JSON and exit
 ```
 
 If the camera can't do what you ask for, it picks the closest mode it has.

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using app.Settings;
 
 namespace app.Gaze;
 
@@ -11,6 +12,7 @@ public enum TrackingState
     Recovering,     // good frames again, waiting for RecoverFrames in a row before trusting them
     NotResponding,  // frames stopped arriving
     Stopped,        // tracker process exited
+    Paused,         // paused by the user. frames still arrive, the cursor stays put
 }
 
 /// <summary>
@@ -20,9 +22,8 @@ public enum TrackingState
 /// </summary>
 public sealed class TrackingMonitor
 {
-    public const long LostAfterMs = 500;
-    public const int RecoverFrames = 10;          // ~170 ms at 60 fps
-    public const long NotRespondingAfterMs = 1000;
+    // LostAfterMs, RecoverFrames and NotRespondingAfterMs come from here
+    private AdvancedSettings _timings;
 
     public TrackingState State { get; private set; } = TrackingState.Starting;
 
@@ -39,10 +40,31 @@ public sealed class TrackingMonitor
     private int _goodStreak;
 
     // nowMs is only for tests, normally a stopwatch
-    public TrackingMonitor(Func<long>? nowMs = null)
+    public TrackingMonitor(AdvancedSettings? timings = null, bool paused = false, Func<long>? nowMs = null)
     {
         var clock = Stopwatch.StartNew();
         _nowMs = nowMs ?? (() => clock.ElapsedMilliseconds);
+        _timings = timings ?? new AdvancedSettings();
+        if (paused) State = TrackingState.Paused;
+    }
+
+    /// <summary>New timings, used from the next frame.</summary>
+    public void Configure(AdvancedSettings timings) => _timings = timings;
+
+    public void SetPaused(bool paused)
+    {
+        if (State == TrackingState.Stopped) return;
+        if (paused)
+        {
+            Set(TrackingState.Paused, null);
+        }
+        else if (State == TrackingState.Paused)
+        {
+            // frames were ignored while paused, so wait for RecoverFrames good ones again
+            _goodStreak = 0;
+            _badSinceMs = -1;
+            Set(_lastFrameMs < 0 ? TrackingState.Starting : TrackingState.Recovering, null);
+        }
     }
 
     public void OnFrame(Tracking? tracking)
@@ -50,6 +72,7 @@ public sealed class TrackingMonitor
         if (State == TrackingState.Stopped) return;
         long now = _nowMs();
         _lastFrameMs = now;
+        if (State == TrackingState.Paused) return;
 
         // an older tracker without the field: assume it's fine
         bool good = tracking is null || tracking.State == "ok";
@@ -64,8 +87,8 @@ public sealed class TrackingMonitor
                     Set(TrackingState.Tracking, null);
                     break;
                 case TrackingState.Starting or TrackingState.Lost or TrackingState.NotResponding or TrackingState.Recovering:
-                    Set(_goodStreak >= RecoverFrames ? TrackingState.Tracking : TrackingState.Recovering,
-                        _goodStreak >= RecoverFrames ? null : Reason);
+                    bool recovered = _goodStreak >= _timings.RecoverFrames;
+                    Set(recovered ? TrackingState.Tracking : TrackingState.Recovering, recovered ? null : Reason);
                     break;
             }
             return;
@@ -81,7 +104,7 @@ public sealed class TrackingMonitor
                 Set(TrackingState.Uncertain, reason);
                 break;
             case TrackingState.Uncertain:
-                if (now - _badSinceMs >= LostAfterMs) Set(TrackingState.Lost, reason);
+                if (now - _badSinceMs >= _timings.LostAfterMs) Set(TrackingState.Lost, reason);
                 else Reason = reason; // not shown yet, no need to fire Changed
                 break;
             default:
@@ -94,8 +117,8 @@ public sealed class TrackingMonitor
     public void CheckTimeout()
     {
         // the tracker takes a few seconds to load MediaPipe, so only after the first frame
-        if (_lastFrameMs < 0 || State is TrackingState.NotResponding or TrackingState.Stopped) return;
-        if (_nowMs() - _lastFrameMs >= NotRespondingAfterMs)
+        if (_lastFrameMs < 0 || State is TrackingState.NotResponding or TrackingState.Stopped or TrackingState.Paused) return;
+        if (_nowMs() - _lastFrameMs >= _timings.NotRespondingAfterMs)
         {
             _goodStreak = 0;
             Set(TrackingState.NotResponding, null);
@@ -120,6 +143,7 @@ public sealed class TrackingMonitor
         TrackingState.Recovering => ("Face found", "Hold still for a moment"),
         TrackingState.NotResponding => ("Tracker not responding", "Check the camera is connected, or restart mouSEE"),
         TrackingState.Stopped => ("Tracker stopped", "Restart mouSEE"),
+        TrackingState.Paused => ("Paused", "Press Ctrl+Alt+P to continue"),
         _ => reason switch
         {
             "no_face" => ("Can't see your face", "Sit in front of the camera"),

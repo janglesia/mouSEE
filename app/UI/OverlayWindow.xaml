@@ -43,7 +43,7 @@
                             FontSize="13"/>
                 </StackPanel>
             </Border>
-            <Border Background="#99000000" CornerRadius="4" Padding="8">
+            <Border x:Name="DebugPanel" Background="#99000000" CornerRadius="4" Padding="8">
                 <TextBlock x:Name="DebugText"
                         Text="Starting tracker..."
                         Foreground="Lime"
