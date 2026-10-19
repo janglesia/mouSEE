@@ -4,9 +4,6 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using app.Calibration;
-using app.Gaze;
-using app.Settings;
 using System.Windows.Controls;
 
 namespace app.UI;
@@ -19,8 +16,8 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52, VK_F = 0x46;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -42,6 +39,14 @@ public partial class OverlayWindow : Window
     private readonly TrackingMonitor _monitor;
     // where to sit: move back toward where calibration was, or re-center
     private readonly PositionGuide _guide = new();
+    // the nudge and both head modes: the head nudges the bubble once the eyes settle (app/Bubble/HeadModes/)
+    private readonly HeadNudge _nudge;
+    // no where-to-sit tips while the head nudges the bubble (the tilting is on purpose then), and for a moment after
+    // letting go, to get the head back
+    public const long QuietAfterNudgeMs = 2000;
+    private long _lastNudgedMs = long.MinValue / 2;
+    private bool _guideQuiet;
+    private static readonly Brush Following = Frozen("#FFFFFF"), Holding = Frozen("#F7D060");
     private readonly App _app = (App)Application.Current;
     // frames stopping can't be noticed from OnMessage, so check on a timer
     private readonly DispatcherTimer _timeoutTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -57,6 +62,7 @@ public partial class OverlayWindow : Window
         //I made the overlay fullscreen for the gaze bubble so the line above is obsolete but i didn't want to delete in case we need to change things
 
         _monitor = new TrackingMonitor(_settings.Current.Advanced, _settings.Current.Tracking.Paused);
+        _nudge = new HeadNudge(_settings.Current.Head);
         _monitor.Changed += UpdateStatusBar;
         UpdateStatusBar(); // could start out paused
         ApplyOverlaySettings(_settings.Current.Overlay);
@@ -93,6 +99,7 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_PAUSE);
             UnregisterHotKey(hwnd, HOTKEY_CALIBRATIONS);
             UnregisterHotKey(hwnd, HOTKEY_RECENTER);
+            UnregisterHotKey(hwnd, HOTKEY_FINETUNE);
         };
     }
 
@@ -113,13 +120,14 @@ public partial class OverlayWindow : Window
         SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
 
         // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus),
-        // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations, Ctrl+Alt+R re-centers. global, so they
-        // work from any app. q, p, c and r in the camera window do the same, see App.xaml.cs
+        // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations, Ctrl+Alt+R re-centers, Ctrl+Alt+F
+        // fine-tunes. global, so they work from any app. q, p, c, r and f in the camera window do the same, see App.xaml.cs
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         RegisterHotKey(hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, VK_Q);
         RegisterHotKey(hwnd, HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT, VK_P);
         RegisterHotKey(hwnd, HOTKEY_CALIBRATIONS, MOD_CONTROL | MOD_ALT, VK_C);
         RegisterHotKey(hwnd, HOTKEY_RECENTER, MOD_CONTROL | MOD_ALT, VK_R);
+        RegisterHotKey(hwnd, HOTKEY_FINETUNE, MOD_CONTROL | MOD_ALT, VK_F);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -143,6 +151,10 @@ public partial class OverlayWindow : Window
                 handled = true;
                 ((App)Application.Current).StartRecenter();
                 break;
+            case HOTKEY_FINETUNE:
+                handled = true;
+                ((App)Application.Current).StartFineTune();
+                break;
         }
         return IntPtr.Zero;
     }
@@ -153,7 +165,7 @@ public partial class OverlayWindow : Window
 
     private void UpdateGuide()
     {
-        string? text = _guide.MoveHint is { } move
+        string? text = _guideQuiet ? null : _guide.MoveHint is { } move
             ? $"{move}. Tracking works best close to where you sat during calibration."
             : _guide.SuggestRecenter
                 ? "You moved since the last re-center. Press Ctrl+Alt+R (or r in the camera window) to re-center."
@@ -162,15 +174,33 @@ public partial class OverlayWindow : Window
         GuideBar.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    // hides the where-to-sit tips while nudging and for QuietAfterNudgeMs after
+    private void QuietGuide(bool nudging)
+    {
+        long now = _clock.ElapsedMilliseconds;
+        if (nudging) _lastNudgedMs = now;
+        bool quiet = now - _lastNudgedMs < QuietAfterNudgeMs;
+        if (quiet == _guideQuiet) return;
+        _guideQuiet = quiet;
+        UpdateGuide();
+    }
+
     private void OnSettingsChanged(AppSettings old, AppSettings now)
     {
         if (old.Advanced != now.Advanced) _monitor.Configure(now.Advanced);
         if (old.Tracking.Paused != now.Tracking.Paused) _monitor.SetPaused(now.Tracking.Paused);
         if (old.Overlay != now.Overlay) ApplyOverlaySettings(now.Overlay);
+        if (old.Head != now.Head)
+        {
+            _nudge.Settings = now.Head;
+            if (old.Head.Mode != now.Head.Mode) _nudge.Reset();
+        }
     }
 
     private void ApplyOverlaySettings(OverlaySettings overlay)
     {
+        _guide.MoveAt = overlay.PositionHintPercent / 100.0;
+        _guide.TiltAt = overlay.TiltHintDegrees;
         StatusBar.Visibility = overlay.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
         DebugPanel.Visibility = overlay.ShowDebugReadout ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -192,13 +222,20 @@ public partial class OverlayWindow : Window
             || estimate is not { Valid: true, X: double x, Y: double y })
         {
             GazeBubble.Visibility = Visibility.Collapsed;
+            _nudge.Reset();
             return;
         }
 
-        // minus the re-center's shift, then kept within the screen
-        var offset = ((App)Application.Current).Offset;
-        x = Math.Clamp(x - offset.X, 0.0, 1.0);
-        y = Math.Clamp(y - offset.Y, 0.0, 1.0);
+        // the fine-tune and the re-center's shift, then the head nudge (in the nudge and both head modes), then kept
+        // within the screen. the bubble turns yellow while it holds on a spot and the head nudges it
+        (x, y) = _app.Bubble(x, y);
+        if (_settings.Current.Head.Mode.Nudges() && msg.Faces?.FirstOrDefault()?.Pose is { } pose)
+            (x, y) = _nudge.Update(_clock.ElapsedMilliseconds, x, y, pose.Yaw, pose.Pitch);
+        bool nudging = _nudge.Holding && _settings.Current.Head.Mode.Nudges();
+        GazeBubble.Stroke = nudging ? Holding : Following;
+        QuietGuide(nudging);
+        x = Math.Clamp(x, 0.0, 1.0);
+        y = Math.Clamp(y, 0.0, 1.0);
 
         // Convert normalized coordinates into canvas pixels.
         double left = x * GazeCanvas.ActualWidth - GazeBubble.Width / 2;

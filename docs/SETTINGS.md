@@ -6,7 +6,7 @@ All of mouSEE's settings, where they're saved, and how to add new ones.
 
 `app/Settings/settings.json`. The app writes it with the defaults the first time it runs. It's in `.gitignore`, so everyone has their own and nobody's camera or dwell time ends up in a commit. Delete it to go back to the defaults.
 
-There's no settings screen yet. To change something, close mouSEE, edit the file, and start it again (the file is only read at startup). `//` comments and trailing commas are fine.
+There's no settings screen yet, except the head mode, nudge and where-to-sit sliders in the calibrations window (Ctrl+Alt+C), which save as you move them. For everything else, close mouSEE, edit the file, and start it again (the file is only read at startup). `//` comments and trailing commas are fine.
 
 What happens with bad values:
 
@@ -25,10 +25,14 @@ Command line options win over the file for that run, e.g. `make run ARGS="--came
 | Ctrl+Alt+P | anywhere | pause / unpause (`tracking.paused`) |
 | q | camera window | quit |
 | p | camera window | pause / unpause |
-| Ctrl+Alt+C | anywhere | the calibrations window, see [SAVED-CALIBRATIONS.md](SAVED-CALIBRATIONS.md) |
+| Ctrl+Alt+C | anywhere | the calibrations window, see [SAVED-CALIBRATIONS.md](calibration/SAVED-CALIBRATIONS.md) |
 | c | camera window | the calibrations window |
+| Ctrl+Alt+R | anywhere | re-center: look at a dot in the middle for a moment, see [RE-CENTER.md](bubble/RE-CENTER.md) |
+| r | camera window | re-center |
+| Ctrl+Alt+F | anywhere | fine-tune: last adjustments with 20 dots, see [FINE-TUNE.md](bubble/FINE-TUNE.md) |
+| f | camera window | fine-tune |
 
-The Ctrl+Alt ones work from any program. Plain q, p and c only work while the camera window is focused, otherwise typing a q anywhere would quit mouSEE.
+The Ctrl+Alt ones work from any program. Plain q, p, c and r only work while the camera window is focused, otherwise typing a q anywhere would quit mouSEE.
 
 ## All settings
 
@@ -39,7 +43,7 @@ The Ctrl+Alt ones work from any program. Plain q, p and c only work while the ca
 | Setting | Default | Allowed | When | Used | What it does |
 |---------|---------|---------|------|------|--------------|
 | `camera.index` | `0` | 0 to 9 | restarts tracker | yes | Which camera. `make cameras` lists them. |
-| `camera.resolution` | `"1080p"` | `"360p"`, `"480p"`, `"720p"`, `"1080p"` | restarts tracker | yes | 640x360, 640x480, 1280x720 or 1920x1080, same as `make run 720` etc. Higher is more precise but uses more CPU. The camera picks its closest mode if it can't do it. |
+| `camera.resolution` | `"1080p"` | `"360p"`, `"480p"`, `"720p"`, `"1080p"` | restarts tracker | yes | The webcam's picture size, not your screen's: the screen is read from Windows and is never a setting. 640x360, 640x480, 1280x720 or 1920x1080, same as `make run 720` etc. Higher is more precise but uses more CPU. The camera picks its closest mode if it can't do it. |
 | `camera.fps` | `60` | 15 to 120 | restarts tracker | yes | Frame rate to ask the camera for. Many webcams only do 30. |
 | `camera.showPreview` | `false` | `true` / `false` | restarts tracker | yes | The camera window with the tracked points drawn on. |
 
@@ -64,10 +68,24 @@ The Ctrl+Alt ones work from any program. Plain q, p and c only work while the ca
 |---------|---------|---------|------|------|--------------|
 | `tracking.paused` | `false` | `true` / `false` | right away | yes | The cursor stops following your eyes. The tracker keeps running so unpausing is instant. Saved, so it's still paused next time. Calibration ignores it. |
 
+### Head
+
+What moving your head does to the bubble, three ways to try against each other. Pick the mode in the calibrations window (Ctrl+Alt+C), see [HEAD-MODES.md](bubble/HEAD-MODES.md). The nudge numbers only matter in the `nudge` and `both` modes. They're also sliders in the calibrations window, under the mode.
+
+| Setting | Default | Allowed | When | Used | What it does |
+|---------|---------|---------|------|------|--------------|
+| `head.mode` | `"cancel"` | `"cancel"` / `"nudge"` / `"both"` | right away (restarts the tracker when cancelling turns on or off) | yes | `cancel`: head movement is cancelled out, the bubble follows the eyes only (how it was before). `nudge`: not cancelled, and once the eyes settle, turning or tilting the head nudges the bubble. `both`: cancelled and nudged. |
+| `head.nudgeStrength` | `1.5` | 0.25 - 5, % of the screen per degree | right away | yes | How far the bubble moves for each degree you turn or tilt your head while nudging. |
+| `head.nudgeDeadZone` | `1` | 0 - 5 degrees | right away | yes | Head movement smaller than this doesn't nudge, so the bubble doesn't drift while you hold still. |
+| `head.nudgeSettleMs` | `600` | 100 - 3000 ms | right away | yes | How long the eyes stay on one spot before the bubble holds there and the head can nudge it. |
+| `head.nudgeReleasePercent` | `20` | 5 - 50, % of the screen | right away | yes | How far the eyes move from both the held spot and the nudged bubble before the bubble follows them again. Raise it if the bubble lets go while you nudge. |
+
 ### Overlay
 
 | Setting | Default | Allowed | When | Used | What it does |
 |---------|---------|---------|------|------|--------------|
+| `overlay.positionHintPercent` | `6` | 3 - 15, % of the camera image | right away | yes | How far you can move from where you sat during calibration (to the side, up or down) before the bar says which way to go back. Closer / further from the camera scales with it (1.8 / 1.5 times). Also in the calibrations window. |
+| `overlay.tiltHintDegrees` | `8` | 4 - 20 degrees | right away | yes | How far your head can tilt up or down from the calibration before the bar says to tilt it back. Reading the bottom of the screen alone tilts it 3-4 degrees. Also in the calibrations window. |
 | `overlay.showStatusBar` | `true` | `true` / `false` | right away | yes | The coloured bar in the bottom left saying whether tracking works. |
 | `overlay.showDebugReadout` | `true` | `true` / `false` | right away | yes | fps, latency, head angle, irises, blinks and gaze under the status bar. |
 
@@ -77,7 +95,8 @@ The Ctrl+Alt ones work from any program. Plain q, p and c only work while the ca
 |---------|---------|---------|------|------|--------------|
 | `calibration.targetDwellMs` | `1200` | 500 to 5000 ms | next calibration | yes | How long each target is looked at (the ring filling up). Longer gives calibration more samples. |
 | `calibration.runAccuracyCheck` | `false` | `true` / `false` | next time the calibration window opens | yes | 4 extra targets after calibration to measure accuracy. Leave it off until something measures the error, otherwise you look at 4 targets for nothing. |
-| `calibration.askWhenMissing` | `true` | `true` / `false` | next start | yes | When there are no saved calibrations, asks on startup if you want to make one. Without one mouSEE uses default values. The "ask me" box in the calibrations window sets it. See [SAVED-CALIBRATIONS.md](SAVED-CALIBRATIONS.md). |
+| `calibration.askWhenMissing` | `true` | `true` / `false` | next start | yes | When there are no saved calibrations, asks on startup if you want to make one. Without one mouSEE uses default values. The "ask me" box in the calibrations window sets it. See [SAVED-CALIBRATIONS.md](calibration/SAVED-CALIBRATIONS.md). |
+| `calibration.recenterOnStart` | `true` | `true` / `false` | next start | yes | When mouSEE starts with a calibration, look at a dot in the middle for two seconds so the bubble fits how you're sitting today. Re-center any time with Ctrl+Alt+R or r in the camera window. See [RE-CENTER.md](bubble/RE-CENTER.md). |
 
 ### Advanced
 
@@ -98,7 +117,8 @@ Tuning, most people won't need to touch these.
   "cursor": { "sensitivity": 0.5, "showGazeBubble": true },
   "clicking": { "method": "dwell", "dwellMs": 1000, "dwellRadiusPx": 50 },
   "tracking": { "paused": false },
-  "overlay": { "showStatusBar": true, "showDebugReadout": true },
+  "head": { "mode": "cancel", "nudgeStrength": 1.5, "nudgeDeadZone": 1, "nudgeSettleMs": 600, "nudgeReleasePercent": 20 },
+  "overlay": { "showStatusBar": true, "showDebugReadout": true, "positionHintPercent": 6, "tiltHintDegrees": 8 },
   "calibration": { "targetDwellMs": 1200, "runAccuracyCheck": false, "askWhenMissing": true },
   "advanced": { "lostAfterMs": 500, "recoverFrames": 10, "notRespondingAfterMs": 1000, "detectionConfidence": 0.5 }
 }
@@ -143,7 +163,7 @@ What already listens to `Changed`:
 
 - `App.xaml.cs` restarts the tracker when its options change (camera, detection confidence, the calibration in use)
 - `OverlayWindow` pauses, shows or hides the status bar, readout and bubble, and passes new timings to its `TrackingMonitor`
-- `CalibrationWindow` passes new timings to its `TrackingMonitor`
+- `GridWindow` passes new timings to its `TrackingMonitor`
 
 ## Building a settings screen
 

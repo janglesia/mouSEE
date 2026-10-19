@@ -17,7 +17,7 @@ Returns {"state": ..., "reason": ...}:
 """
 
 # starting guesses, adjust once we have more recordings.
-# the eye check sets REST_*, MAX_PITCH and MAX_YAW per person from a saved calibration, see docs/EYE-CALIBRATION.md
+# the eye check sets REST_*, MAX_PITCH and MAX_YAW per person from a saved calibration, see docs/calibration/EYE-CALIBRATION.md
 EDGE_MARGIN = 0.01          # face box this close to the image edge counts as cut off (0-1)
 MAX_YAW = 35.0              # degrees, turning left/right
 MAX_PITCH = 30.0            # degrees, looking up/down. resting pitch is often -10 with the camera on top of the screen

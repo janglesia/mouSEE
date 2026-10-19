@@ -11,6 +11,7 @@ public sealed record AppSettings
     [Section("Cursor")] public CursorSettings Cursor { get; init; } = new();
     [Section("Clicking")] public ClickingSettings Clicking { get; init; } = new();
     [Section("Tracking")] public TrackingSettings Tracking { get; init; } = new();
+    [Section("Head")] public HeadSettings Head { get; init; } = new();
     [Section("Overlay")] public OverlaySettings Overlay { get; init; } = new();
     [Section("Calibration")] public CalibrationSettings Calibration { get; init; } = new();
     [Section("Advanced")] public AdvancedSettings Advanced { get; init; } = new();
@@ -25,7 +26,8 @@ public sealed record CameraSettings
     [Setting("Camera", "Which camera to use. 0 is the first one, make cameras lists them.", Min = 0, Max = 9, Step = 1)]
     public int Index { get; init; }
 
-    [Setting("Resolution", "Higher tracks the eyes more precisely but uses more CPU. If the camera can't do it, it picks the closest mode.")]
+    // the webcam's picture size. not the screen: that's read from Windows (SystemParameters) and is never a setting
+    [Setting("Camera resolution", "The size of the webcam's picture, not your screen's (mouSEE always uses your screen's own size). Higher tracks the eyes more precisely but uses more CPU. If the camera can't do it, it picks the closest mode.")]
     public Resolution Resolution { get; init; } = Resolution.P1080;
 
     [Setting("Frame rate", "Frames per second to ask the camera for. Many webcams only do 30.", Min = 15, Max = 120, Step = 5, Unit = "fps")]
@@ -91,6 +93,26 @@ public sealed record TrackingSettings
     public bool Paused { get; init; }
 }
 
+// what moving your head does to the bubble, see app/Bubble/HeadModes/ and docs/bubble/HEAD-MODES.md. the mode is picked in the
+// calibrations window, the nudge numbers only matter in the nudge and both modes
+public sealed record HeadSettings
+{
+    [Setting("Head mode", "What moving your head does: cancelled out so the bubble follows your eyes only, nudges the bubble once your eyes settle, or both. Changing whether it's cancelled restarts the tracker.")]
+    public HeadMode Mode { get; init; } = HeadMode.Cancel;
+
+    [Setting("Nudge strength", "How far the bubble moves for each degree you turn or tilt your head while nudging.", Min = 0.25, Max = 5, Step = 0.25, Unit = "% of the screen per degree")]
+    public double NudgeStrength { get; init; } = 1.5;
+
+    [Setting("Nudge dead zone", "Head movement smaller than this doesn't nudge, so the bubble doesn't drift while you hold still.", Min = 0, Max = 5, Step = 0.25, Unit = "degrees")]
+    public double NudgeDeadZone { get; init; } = 1;
+
+    [Setting("Settle time", "How long your eyes have to stay on one spot before the bubble holds there and your head can nudge it. Longer gives your eyes time to get there first.", Min = 100, Max = 3000, Step = 50, Unit = "ms")]
+    public int NudgeSettleMs { get; init; } = 600;
+
+    [Setting("Let go after looking away", "How far your eyes have to move from the held spot before the bubble follows them again. Raise it if the bubble lets go while you nudge.", Min = 5, Max = 50, Step = 1, Unit = "% of the screen")]
+    public int NudgeReleasePercent { get; init; } = 20;
+}
+
 public sealed record OverlaySettings
 {
     [Setting("Show status bar", "The coloured bar in the bottom left that says whether tracking works.")]
@@ -98,6 +120,12 @@ public sealed record OverlaySettings
 
     [Setting("Show debug readout", "fps, latency, head angle, irises, blinks and gaze under the status bar.")]
     public bool ShowDebugReadout { get; init; } = true;
+
+    [Setting("Move hint after", "How far you can move from where you sat during calibration (to the side, up or down) before the bar says which way to go back. Smaller tells you sooner. Closer or further from the camera scales with it.", Min = 3, Max = 15, Step = 1, Unit = "% of the camera image")]
+    public int PositionHintPercent { get; init; } = 6;
+
+    [Setting("Tilt hint after", "How far your head can tilt up or down from how you held it during calibration before the bar says to tilt it back. Reading the bottom of the screen alone tilts it 3-4 degrees.", Min = 4, Max = 20, Step = 1, Unit = "degrees")]
+    public double TiltHintDegrees { get; init; } = 8;
 }
 
 public sealed record CalibrationSettings

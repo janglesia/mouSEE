@@ -44,7 +44,7 @@ WINK_BLINK_DIFF = 0.08
 # normal open eye, so this has to come from the image. Contrast = std / mean brightness inside
 # the eye outline. From a recording: open eye 0.45-0.7, winked eye 0.2-0.66, hand over the
 # eye 0.02-0.07. Below this counts as covered.
-# per-person value, the eye check wizard should tune it. see docs/EYE-CALIBRATION.md
+# per-person value, the eye check wizard should tune it. see docs/calibration/EYE-CALIBRATION.md
 COVERED_CONTRAST = 0.15
 
 # Closed eyes, from the image. Tilting the head up raises MediaPipe's blink score for the OPEN eye
@@ -53,15 +53,25 @@ COVERED_CONTRAST = 0.15
 # area / brightness of the rest of the eye. Open eye (dark iris on white) 0.1-0.5 at any head
 # angle, closed eye (lid, no iris) 0.7-1.1. Above this counts as closed. 0.6 gave single-frame false
 # alarms in dimmer light, 0.65 still caught 100% of head-up winks in the recording.
-# per-person value, the eye check wizard should tune it. see docs/EYE-CALIBRATION.md
+# per-person value, the eye check wizard should tune it. see docs/calibration/EYE-CALIBRATION.md
 IRIS_HIDDEN_RATIO = 0.65
 
 # Lids this far apart (openness) mean the eye is open, whatever the iris check says. Glasses reflect the
 # screen right over the iris, and with a bright screen (the yellow calibration screen, a white web page)
 # an open eye then looks like it has no iris. The lid landmarks don't care about reflections.
 # Recordings: open 0.31-0.40 (0.27 with the head tilted up), the closed eye of a wink 0.16-0.24.
-# per-person value, the eye check wizard tunes it. see docs/EYE-CALIBRATION.md
+# per-person value, the eye check wizard tunes it. see docs/calibration/EYE-CALIBRATION.md
 LIDS_OPEN_OPENNESS = 0.26
+
+# Looking down (at the bottom of the screen) brings both lids down about as far as a wink's closed lid, and the lid
+# covers part of the iris, so both eyes read as closed and the bubble had nothing to go on there. But a wink is one
+# eye, and looking down is both equally. In a recording the two lids were within 16% of each other looking anywhere
+# with the eyes open (smaller / bigger 0.84-1.0, the bottom row included), and at most 0.80 for a wink (0.57-0.80).
+# Both eyes closed has the lids nearly shut (0.04) and a high blink score (0.73), looking down 0.25 and at most 0.26.
+# So: both lids down by the same amount, not shut, and a low blink score = looking down, the eyes count as open.
+SAME_LIDS_RATIO = 0.82
+LOOKING_DOWN_MIN_OPENNESS = 0.15
+LOOKING_DOWN_MAX_BLINK = 0.45
 
 # Debugging, will probably change as needed
 H_THRESH = 0.12
@@ -391,6 +401,16 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
                             or eye["blink"] - other_eye["blink"] > WINK_BLINK_DIFF)
             if less_open and blink_higher:
                 eye["closed"] = True
+
+        # looking down isn't closed eyes, see SAME_LIDS_RATIO
+        left, right = out["left"], out["right"]
+        if (left["closed"] or right["closed"]) and not left["covered"] and not right["covered"]:
+            low, high = sorted((left["openness"], right["openness"]))
+            blink = max(left["blink"] or 0.0, right["blink"] or 0.0)
+            if (high > 0 and low / high >= SAME_LIDS_RATIO and low >= LOOKING_DOWN_MIN_OPENNESS
+                    and blink < LOOKING_DOWN_MAX_BLINK):
+                left["closed"] = right["closed"] = False
+                left["looking_down"] = right["looking_down"] = True
 
     # eye validator call, drop the eye if it looks like a glitch.
     # after the wink check because the validator treats closed eyes differently

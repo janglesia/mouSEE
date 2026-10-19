@@ -65,6 +65,11 @@ class GazeParams:
     y_const: float = 0.5
     y_openness: float = 0.0
     y_iris: float = 0.0
+    # and two curves on top, when the calibration found them: + y_arc * tan(left/right angle)^2, the sides of the
+    # screen reading higher or lower than the middle (an arc, from a camera under the screen looking up), and
+    # + y_openness_sq * openness^2, up/down stretched more at one end than the other. 0 = straight
+    y_arc: float = 0.0
+    y_openness_sq: float = 0.0
 
     # Looking down, the iris moves less from side to side (the lid comes down over it), so left/right gets squeezed
     # together at the bottom of the screen. x gets x_squeeze * tan(angle) * (lid openness - openness_ref) on top,
@@ -163,6 +168,8 @@ def _validate_params(params):
         params.y_const,
         params.y_openness,
         params.y_iris,
+        params.y_arc,
+        params.y_openness_sq,
         params.x_squeeze,
         params.openness_ref,
         params.head_x_shrink,
@@ -255,6 +262,10 @@ def _screen_position(h, v, params, face_x=None, fitted_y=None, openness=None, fa
     y = params.center_y + params.gain_y * math.tan(v) if fitted_y is None else fitted_y
     if openness is not None:
         x += params.x_squeeze * t * (openness - params.openness_ref)
+    if fitted_y is not None:
+        y += params.y_arc * t * t
+        if openness is not None:
+            y += params.y_openness_sq * openness * openness
     if _finite_number(face_x):
         moved = float(face_x) - params.head_x_ref
         x += params.head_x_gain * moved + params.head_x_shrink * t * abs(moved)

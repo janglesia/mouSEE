@@ -23,4 +23,18 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- the app's folders, the same as in app/mouSEE.csproj -->
+  <ItemGroup>
+    <Using Include="app.Tracker" />
+    <Using Include="app.Calibration.EyeCheck" />
+    <Using Include="app.Calibration.GazeGrid" />
+    <Using Include="app.Calibration.Saving" />
+    <Using Include="app.Calibration.Accuracy" />
+    <Using Include="app.Bubble" />
+    <Using Include="app.Bubble.HeadModes" />
+    <Using Include="app.LookToAnswer" />
+    <Using Include="app.UI" />
+    <Using Include="app.Settings" />
+  </ItemGroup>
+
 </Project>

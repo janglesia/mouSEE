@@ -80,13 +80,16 @@ dotnet run -- --preview
 # Use a second camera
 dotnet run -- --preview --camera 1
 
-# Start a new calibration straight away (eye check, then the nine-point screen)
+# Start a new calibration straight away (eye check, then the grid screen)
 dotnet run -- --calibrate
 
 # Open the accuracy test (where the bubble lands for dots all over the screen)
 dotnet run -- --accuracy-test
 
-# Open only the nine-point calibration screen instead of the overlay
+# Open the fine-tune (last adjustments to the calibration in use)
+dotnet run -- --fine-tune
+
+# Open only the grid calibration screen instead of the overlay
 dotnet run -- --calibration-preview
 
 # Build without running (to check for errors)
@@ -96,7 +99,7 @@ dotnet build
 dotnet clean
 ```
 
-The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only options the app itself uses are `--calibrate`, `--calibration-preview` and `--accuracy-test`, it doesn't pass those on.
+The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only options the app itself uses are `--calibrate`, `--calibration-preview`, `--accuracy-test` and `--fine-tune`, it doesn't pass those on.
 
 ## Tracker options
 
@@ -109,8 +112,9 @@ The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from 
 --num-faces N         max faces to track (default 1)
 --model PATH          use a different model file
 --list-cameras        print the cameras that open as JSON and exit
---calibration FILE    use a saved calibration (app/Calibration/Saved/*.json), see docs/SAVED-CALIBRATIONS.md
---record-eyes FILE    also write every frame's eye measurements to a CSV, see EYE-CALIBRATION.md
+--calibration FILE    use a saved calibration (app/Calibration/Saved/*.json), see docs/calibration/SAVED-CALIBRATIONS.md
+--record-eyes FILE    also write every frame's eye measurements to a CSV, see docs/calibration/EYE-CALIBRATION.md
+--no-head-compensation  don't cancel head movement out of the gaze (the app's nudge head mode), see docs/bubble/HEAD-MODES.md
 ```
 
 If the camera can't do what you ask for, it picks the closest mode it has.

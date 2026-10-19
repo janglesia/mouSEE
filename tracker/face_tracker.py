@@ -68,7 +68,7 @@ MAX_CAMERAS = 10
 MAX_MISSES_IN_A_ROW = 2
 
 # the per-person values the eye check saves (the "eyes" part of a calibration file), and where each one lives.
-# a value outside lowest-highest is a broken file, not a person, so it's ignored. see docs/EYE-CALIBRATION.md
+# a value outside lowest-highest is a broken file, not a person, so it's ignored. see docs/calibration/EYE-CALIBRATION.md
 EYE_THRESHOLDS = {
     "IRIS_HIDDEN_RATIO": (eye_extractor_module, 0.3, 1.2),
     "COVERED_CONTRAST": (eye_extractor_module, 0.01, 0.5),
@@ -204,6 +204,15 @@ def eye_record_row(t_ms, face, tracking):
     return row
 
 
+def head_inputs(box, pose, cancel_head=True):
+    """Where the face is and how the head is tilted, for the gaze model's head corrections (leaning, tilting), as
+    estimate_gaze() keywords. Empty with --no-head-compensation: then head movement isn't cancelled out of the gaze,
+    for the app's nudge head mode (docs/bubble/HEAD-MODES.md)."""
+    if not cancel_head:
+        return {}
+    return {"face_x": box[0] + box[2] / 2, "face_pitch": pose["pitch"]}
+
+
 def list_cameras(max_cameras=MAX_CAMERAS, max_misses=MAX_MISSES_IN_A_ROW, open_camera=None):
     """[{"index", "width", "height"}] for every camera that opens and gives a frame.
     width/height is the camera's default mode, not the biggest it can do.
@@ -290,14 +299,14 @@ class Preview(threading.Thread):
             label = state.upper() + (f": {tracking['reason']}" if tracking["reason"] else "")
             color = {"ok": (0, 200, 0), "eyes_closed": (0, 165, 255)}.get(state, (0, 0, 255))
             cv2.putText(view, label, (10, fh - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            cv2.imshow("Tracker preview (q quit, p pause, c calibrations, r re-center)", view)
-            # the app quits on q, pauses on p, opens the calibrations on c and re-centers on r.
+            cv2.imshow("Tracker preview (q quit, p pause, c calibrations, r re-center, f fine-tune)", view)
+            # the app quits on q, pauses on p, opens the calibrations on c, re-centers on r and fine-tunes on f.
             # on its own (make tracker) q closes this and the others do nothing
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 emit({"type": "key", "key": "q"})
                 self.closed.set()
-            elif key in (ord("p"), ord("c"), ord("r")):
+            elif key in (ord("p"), ord("c"), ord("r"), ord("f")):
                 emit({"type": "key", "key": chr(key)})
             # 30 fps is plenty for a preview, leave the rest of the CPU for tracking
             time.sleep(max(0.0, 1 / 30 - (time.monotonic() - shown_at)))
@@ -324,6 +333,8 @@ def main():
                         help="saved calibration to use (app/Calibration/Saved/*.json), default values without one")
     parser.add_argument("--record-eyes", metavar="FILE",
                         help="also write every frame's eye measurements to this CSV file, for checking detection problems")
+    parser.add_argument("--no-head-compensation", action="store_true",
+                        help="don't cancel head movement out of the gaze (the app's nudge head mode, docs/bubble/HEAD-MODES.md)")
     parser.add_argument("--list-cameras", action="store_true",
                         help="print the cameras that open as one JSON line and exit")
     args = parser.parse_args()
@@ -340,6 +351,8 @@ def main():
         except (OSError, ValueError) as e:
             # carry on with the defaults, a broken calibration file shouldn't stop tracking
             log(f"can't read calibration {args.calibration}, using default values: {e}")
+    if args.no_head_compensation:
+        log("not cancelling head movement out of the gaze (--no-head-compensation)")
 
     if not Path(args.model).exists():
         emit({"type": "error", "message": f"Model not found: {args.model}"})
@@ -455,10 +468,10 @@ def main():
                     face["gaze_estimate"] = estimate_gaze(None, gaze_params)
                 else:
                     # Eye data exists, so estimate gaze normally.
-                    # where the face is and how the head is tilted, for the head corrections (leaning, tilting)
-                    box = face["box"]
+                    # with where the face is and how the head is tilted, for the head corrections (leaning, tilting)
                     face["eyes"]["estimate"] = estimate_gaze(
-                        face["eyes"], gaze_params, face_x=box[0] + box[2] / 2, face_pitch=face["pose"]["pitch"]
+                        face["eyes"], gaze_params,
+                        **head_inputs(face["box"], face["pose"], cancel_head=not args.no_head_compensation)
                     )
                     face["eye_extraction"] = {
                         "ok": True,

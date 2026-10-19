@@ -383,7 +383,7 @@ class EndToEndTest(unittest.TestCase):
 
 
 class FittedCalibrationTest(unittest.TestCase):
-    """The app fits these numbers (app/Calibration/GazeFit.cs) and expects estimate_gaze() to give exactly these x.
+    """The app fits these numbers (app/Calibration/GazeGrid/GazeFit.cs) and expects estimate_gaze() to give exactly these x.
     GazeFitTests.Predictions_match_the_tracker has the same numbers, change both together."""
 
     PARAMS = GazeParams(k_h=3.0, left_h_baseline=-0.1417, right_h_baseline=0.13, center_x=0.4852, gain_x=3.5464)
@@ -433,6 +433,45 @@ class FittedCalibrationTest(unittest.TestCase):
         params = params_from_dict({"y_const": 3.5225, "y_openness": -9.068, "y_iris": 5.4409})
         eyes = {"left": make_eye(v=0.1), "right": make_eye(v=0.1)}
         self.assertEqual(estimate_gaze(eyes, params)["y"], estimate_gaze(eyes, DEFAULT_PARAMS)["y"])
+
+    def test_up_down_curves(self):
+        # the arc: looking to the side moves y by y_arc * tan(angle)^2. uneven: + y_openness_sq * openness^2
+        params = params_from_dict({"k_h": 3.0, "y_const": 3.5, "y_openness": -9.0, "y_arc": -0.6, "y_openness_sq": 4.0})
+        eyes = lambda h: {"left": dict(make_eye(h=h), openness=0.3), "right": dict(make_eye(h=h), openness=0.3)}
+        t = math.tan(math.asin(0.3 / 3.0))
+        self.assertAlmostEqual(estimate_gaze(eyes(0.0), params)["y"], 3.5 - 9.0 * 0.3 + 4.0 * 0.09, places=3)
+        self.assertAlmostEqual(estimate_gaze(eyes(0.3), params)["y"], 3.5 - 9.0 * 0.3 + 4.0 * 0.09 - 0.6 * t * t, places=3)
+
+    def test_up_down_curves_need_a_fitted_up_down(self):
+        eyes = {"left": dict(make_eye(h=0.3, v=0.1), openness=0.3), "right": dict(make_eye(h=0.3, v=0.1), openness=0.3)}
+        self.assertEqual(estimate_gaze(eyes, params_from_dict({"y_arc": -0.6, "y_openness_sq": 4.0}))["y"],
+                         estimate_gaze(eyes, DEFAULT_PARAMS)["y"])
+
+    def test_looking_down_squeeze_changes_left_right_by_lid_openness(self):
+        params = params_from_dict({"k_h": 3.0, "center_x": 0.5, "gain_x": 3.6, "x_squeeze": -12.0, "openness_ref": 0.32})
+        eyes = lambda openness: {"left": dict(make_eye(h=0.3), openness=openness), "right": dict(make_eye(h=0.3), openness=openness)}
+        t = math.tan(math.asin(0.3 / 3.0))
+        self.assertAlmostEqual(estimate_gaze(eyes(0.32), params)["x"], 0.5 + 3.6 * t, places=3)  # at the reference: no change
+        self.assertAlmostEqual(estimate_gaze(eyes(0.27), params)["x"], 0.5 + 3.6 * t - 12.0 * t * -0.05, places=3)
+
+    def test_leaning_shrinks_left_right_and_moves_up_down(self):
+        params = params_from_dict({"k_h": 3.0, "center_x": 0.5, "gain_x": 3.6, "head_x_gain": 0.5, "head_x_shrink": -6.0,
+                                   "head_x_ref": 0.5, "y_const": 3.5, "y_openness": -9.0, "head_y_lean": 0.8})
+        eyes = {"left": dict(make_eye(h=0.3), openness=0.33), "right": dict(make_eye(h=0.3), openness=0.33)}
+        t = math.tan(math.asin(0.3 / 3.0))
+        leaned = estimate_gaze(eyes, params, face_x=0.65)
+        self.assertAlmostEqual(leaned["x"], 0.5 + 3.6 * t + 0.5 * 0.15 - 6.0 * t * 0.15, places=3)
+        self.assertAlmostEqual(leaned["y"], 3.5 - 9.0 * 0.33 + 0.8 * 0.15, places=3)
+
+    def test_head_tilt_moves_up_down_only_with_fitted_up_down(self):
+        tilt = {"head_y_pitch": 0.02, "pitch_ref": -15.0}
+        eyes = {"left": dict(make_eye(v=-0.04), openness=0.33), "right": dict(make_eye(v=-0.04), openness=0.33)}
+        fitted = params_from_dict({"y_const": 3.5, "y_openness": -9.0, **tilt})
+        self.assertAlmostEqual(estimate_gaze(eyes, fitted, face_pitch=-7.0)["y"] - estimate_gaze(eyes, fitted, face_pitch=-15.0)["y"],
+                               0.16, places=3)
+        # without a fitted up/down the tilt numbers do nothing
+        unfitted = params_from_dict(tilt)
+        self.assertEqual(estimate_gaze(eyes, unfitted, face_pitch=-7.0)["y"], estimate_gaze(eyes, unfitted)["y"])
 
     def test_no_head_correction_by_default(self):
         eyes = {"left": make_eye(h=0.1), "right": make_eye(h=0.1)}

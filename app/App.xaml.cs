@@ -1,7 +1,4 @@
 using System.Windows;
-using app.Calibration;
-using app.Gaze;
-using app.Settings;
 
 namespace app;
 
@@ -23,9 +20,9 @@ public partial class App : Application
     public event Action? OffsetChanged;
 
     // options only the app uses, face_tracker.py rejects flags it doesn't know.
-    // --calibration-preview opens only the nine-point screen, --calibrate starts a whole calibration,
-    // --accuracy-test opens the accuracy test
-    private static readonly string[] AppOnlyOptions = ["--calibration-preview", "--calibrate", "--accuracy-test"];
+    // --calibration-preview opens only the grid screen, --calibrate starts a whole calibration,
+    // --accuracy-test opens the accuracy test, --fine-tune the fine-tune
+    private static readonly string[] AppOnlyOptions = ["--calibration-preview", "--calibrate", "--accuracy-test", "--fine-tune"];
 
     // the command line minus AppOnlyOptions
     private string[] _commandLine = [];
@@ -36,9 +33,9 @@ public partial class App : Application
     // while the eye check tries out its values, the tracker uses this file instead of the calibration in use
     private string? _trackerCalibrationOverride;
 
-    // the eye check or the nine-point screen, whichever is open. only one calibration at a time
+    // the eye check or the grid screen, whichever is open. only one calibration at a time
     private Window? _calibrationWindow;
-    private UI.CalibrationsWindow? _calibrationsWindow;
+    private CalibrationListWindow? _calibrationListWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -56,7 +53,7 @@ public partial class App : Application
             await RestartTrackerIfNeededAsync();
         };
 
-        // q, p and c pressed in the camera window
+        // q, p, c, r and f pressed in the camera window
         Tracker.MessageReceived += msg =>
         {
             if (msg.Type != "key") return;
@@ -66,6 +63,7 @@ public partial class App : Application
                 case "p": TogglePause(); break;
                 case "c": ShowCalibrations(); break;
                 case "r": StartRecenter(); break;
+                case "f": StartFineTune(); break;
             }
         };
 
@@ -77,13 +75,15 @@ public partial class App : Application
             return;
         }
 
-        MainWindow = new UI.OverlayWindow();
+        MainWindow = new OverlayWindow();
         MainWindow.Show();
 
         if (Has("--calibrate"))
             StartCalibration();
         else if (Has("--accuracy-test"))
             StartAccuracyTest();
+        else if (Has("--fine-tune"))
+            StartFineTune();
         // first time (or every time until there is one): offer to calibrate, otherwise default values are used
         else if (Calibrations.Active is null && Settings.Current.Calibration.AskWhenMissing)
             ShowCalibrations();
@@ -107,9 +107,9 @@ public partial class App : Application
         Settings.Update(s => s with { Tracking = s.Tracking with { Paused = !s.Tracking.Paused } });
 
     /// <summary>
-    /// A whole new calibration: the eye check first (closed eyes and head angle, see docs/EYE-CALIBRATION.md),
-    /// then the nine-point screen for where you look. The eye check's values are saved as a new calibration
-    /// and used straight away, the nine-point screen adds to it. If one is already open it's brought to the front.
+    /// A whole new calibration: the eye check first (closed eyes and head angle, see docs/calibration/EYE-CALIBRATION.md),
+    /// then the grid screen for where you look. The eye check's values are saved as a new calibration
+    /// and used straight away, the grid screen adds to it. If one is already open it's brought to the front.
     /// </summary>
     public void StartCalibration()
     {
@@ -119,7 +119,7 @@ public partial class App : Application
             return;
         }
 
-        var eyeCheck = new UI.EyeCheckWindow();
+        var eyeCheck = new EyeCheckWindow();
         eyeCheck.Completed += (eyes, report, recording) =>
         {
             var saved = Calibrations.Add(new CalibrationProfile
@@ -136,11 +136,11 @@ public partial class App : Application
         ShowCalibrationWindow(eyeCheck);
     }
 
-    /// <summary>The nine-point screen. Accepting adds to the calibration with this id, or saves a new one if it's null.
+    /// <summary>The grid screen. Accepting adds to the calibration with this id, or saves a new one if it's null.
     /// What the eyes did at each target is saved with it (GazeTargets, and the raw frames in the recording).</summary>
-    public UI.CalibrationWindow StartGazeCalibration(string? id)
+    public GridWindow StartGazeCalibration(string? id)
     {
-        var window = new UI.CalibrationWindow();
+        var window = new GridWindow();
 
         // the frames while each target's ring fills, that's when the eyes are on it
         var targets = new List<(CalibrationTarget Target, List<FrameSample> Frames)>();
@@ -173,7 +173,7 @@ public partial class App : Application
             var gaze = fit?.Model ?? new GazeModel();
             if (id is not null)
             {
-                Calibrations.Update(id, p => p with { Gaze = gaze, GazeTargets = summaries, GazeFit = fit?.Report });
+                Calibrations.Update(id, p => p with { Gaze = gaze, GazeTargets = summaries, GazeFit = fit?.Report, FineTune = null, FineTuneReport = null });
                 SaveRecording(id, (Calibrations.LoadRecording(id) ?? new CalibrationRecording()) with { Gaze = frames });
             }
             else
@@ -209,11 +209,11 @@ public partial class App : Application
                     new CalibrationTarget(r.Index, r.X, r.Y, r.IsValidation, r.MoveHead, r.Pose), r.Frames)).ToList();
                 var lean = recorded.FirstOrDefault(r => r.MoveHead);
                 if (GazeFit.Fit(targets, p.ScreenWidth, lean?.Frames, lean?.X ?? 0.5) is { } fit)
-                    Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeTargets = targets, GazeFit = fit.Report });
+                    Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeTargets = targets, GazeFit = fit.Report, FineTune = null, FineTuneReport = null });
             }
             else if (p.GazeTargets.Count > 0 && p.Gaze == new GazeModel() && GazeFit.Fit(p.GazeTargets, p.ScreenWidth) is { } fit)
             {
-                Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeFit = fit.Report });
+                Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeFit = fit.Report, FineTune = null, FineTuneReport = null });
             }
         }
     }
@@ -258,7 +258,7 @@ public partial class App : Application
             open.Activate();
             return;
         }
-        ShowCalibrationWindow(new UI.RecenterWindow());
+        ShowCalibrationWindow(new RecenterWindow());
     }
 
     /// <summary>The re-center's result: the shift for every bubble position and where the head was.</summary>
@@ -272,6 +272,35 @@ public partial class App : Application
 
     private string? _offsetCalibrationId;
 
+    /// <summary>Where the bubble goes for the tracker's x, y: the fine-tune of the calibration in use, then the re-center's shift.</summary>
+    public (double X, double Y) Bubble(double x, double y) => FineTune.Bubble(x, y, Calibrations.Active?.FineTune, Offset);
+
+    /// <summary>The fine-tune: dots around the screen, then the bubble corrected to land on them, see FineTuneWindow.
+    /// Needs a calibration to save it in.</summary>
+    public void StartFineTune()
+    {
+        if (_calibrationWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+        if (Calibrations.Active is null)
+        {
+            ShowCalibrations();
+            return;
+        }
+        ShowCalibrationWindow(new FineTuneWindow());
+    }
+
+    /// <summary>Keeps the fine-tune with the calibration in use. It covers the re-center's shift too, so that starts over,
+    /// from where the head was during the fine-tune.</summary>
+    public void SaveFineTune(GazeCorrection correction, FineTuneReport report, HeadPosition? at)
+    {
+        if (Calibrations.Active is not { } active) return;
+        Calibrations.Update(active.Id, p => p with { FineTune = correction, FineTuneReport = report });
+        SetOffset(GazeOffset.None, at);
+    }
+
     public void StartAccuracyTest()
     {
         if (_calibrationWindow is { } open)
@@ -279,21 +308,21 @@ public partial class App : Application
             open.Activate();
             return;
         }
-        ShowCalibrationWindow(new UI.AccuracyTestWindow());
+        ShowCalibrationWindow(new AccuracyTestWindow());
     }
 
     /// <summary>The list of saved calibrations, to switch, delete or make a new one.</summary>
     public void ShowCalibrations()
     {
-        if (_calibrationsWindow is { } open)
+        if (_calibrationListWindow is { } open)
         {
             open.Activate();
             return;
         }
 
-        var window = new UI.CalibrationsWindow();
-        window.Closed += (_, _) => _calibrationsWindow = null;
-        _calibrationsWindow = window;
+        var window = new CalibrationListWindow();
+        window.Closed += (_, _) => _calibrationListWindow = null;
+        _calibrationListWindow = window;
         window.Show();
     }
 

@@ -173,5 +173,14 @@ class EyeRecordTest(unittest.TestCase):
         self.assertNotIn("right_openness", row)
 
 
+class HeadInputsTest(unittest.TestCase):
+    def test_middle_of_the_face_and_pitch(self):
+        self.assertEqual(face_tracker.head_inputs([0.4, 0.3, 0.2, 0.25], {"pitch": -11.5, "yaw": 2.0}),
+                         {"face_x": 0.5, "face_pitch": -11.5})
+
+    def test_nothing_without_head_compensation(self):
+        self.assertEqual(face_tracker.head_inputs([0.4, 0.3, 0.2, 0.25], {"pitch": -11.5}, cancel_head=False), {})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,9 @@
 
 Control your mouse cursor with your eyes using a webcam. Built as an accessibility tool for people who can't easily use a regular mouse.
 
-Right now it only does tracking: 60 times a second it finds 478 points on your face (including your irises), your head angle, and things like blinks, and prints them. Moving the actual cursor comes next.
+**New here? Start with [docs/OVERVIEW.md](docs/OVERVIEW.md):** what mouSEE does, how the pieces fit together, what all the calibration words mean, and where everything is.
+
+Where it is now: it tracks your face and eyes 60 times a second, a calibration learns how your eyes map to your screen, and a bubble shows where you're looking. Moving the actual cursor and clicking come next.
 
 ## How it works
 
@@ -34,89 +36,102 @@ OpenCV, MediaPipe and scikit-learn get installed by `make setup`, you don't need
 
 ## Files
 
+Every folder has its own README.md saying what's in it and what belongs there. The code is grouped by feature: each feature's logic and its window sit in the same folder.
+
 ```
 mouSEE/
-  app/                       C# app (WPF)
-    mouSEE.csproj            .NET project file
-    App.xaml, App.xaml.cs    starts the app and opens the overlay (or the calibration window)
-    TrackerClient.cs         starts the Python tracker and reads its messages
-    TrackerMessage.cs        the shape of the tracker's JSON messages
-    AppPaths.cs              where settings and calibrations are saved
-    UI/
-      OverlayWindow.xaml(.cs)      readout in the bottom left corner of the screen
-      CalibrationWindow.xaml(.cs)  nine-point calibration screen, the gaze gets fitted to it
-      CalibrationsWindow.xaml(.cs) the saved calibrations: pick, delete, make a new one
-      EyeCheckWindow.xaml(.cs)     the eye check: open and closed eyes, head angle
-      AccuracyTestWindow.xaml(.cs) the accuracy test: where the bubble lands for dots all over the screen
-      Speaker.cs                   reads instructions out loud
-      ChoicePrompt.xaml(.cs)       yes / no by looking right / left, used by the calibration screens
-    Calibration/
-      CalibrationTarget.cs   one calibration point and its position on screen
-      CalibrationProfile.cs  one saved calibration
-      CalibrationStore.cs    the saved calibrations, which one is in use
-      EyeCheckSteps.cs       the eye check steps and how each is checked
-      EyeCheckAnalysis.cs    works out the eye values from what was recorded
-      EyeCheckRound.cs       the last eye check step, checking the values work
-      CalibrationReport.cs   what a calibration saves: why each value is what it is, and the raw frames
-      GazeFit.cs             fits the gaze to the nine-point targets, so the bubble lands where you look
-      AccuracyTest.cs        the accuracy test's points and results
-      Saved/                 your calibrations (made by the app, not in git)
-    Gaze/
-      TrackingMonitor.cs     decides when tracking counts as lost, and what to tell the user
-      LookChoice.cs          yes / no by looking: right for yes, left for no, held for 3 seconds
-    Settings/
-      AppSettings.cs         every user setting with its default, range and description
-      SettingsCatalog.cs     the list of all settings, for a settings screen
-      SettingsService.cs     the current settings, changing them, telling the app they changed
-      SettingsStore.cs       saving them (settings.json)
-      TrackerArgs.cs         turns the camera settings into tracker options
-      SettingAttribute.cs    [Setting], [Section] and [Choice]
-      settings.json          your settings (made by the app, not in git)
-    assets/mouSEE-logo.png   logo, used as the calibration target
-    Input/                   empty for now, see below
-  tracker/                   Python face tracking
-    face_tracker.py          reads the webcam, finds the face, sends results to the app
-    eye_extractor.py         eye measurements, open/closed and winks, glitch filter, feature vectors
-    tracking_status.py       per frame: is tracking ok, eyes closed, or lost (and why)
-    requirements.txt         Python packages
-    face_landmarker.task     face landmark model (downloaded by make setup)
-    .venv/                   Python virtual environment (created by make setup, not in git)
+  app/                         C# app (WPF)
+    mouSEE.csproj              .NET project file, also lists the app's folders so every file can use every part
+    App.xaml, App.xaml.cs      starts the app: the overlay, the keys, which calibration screen opens
+    AppPaths.cs                where settings and calibrations are saved
+    Stats.cs                   percentiles, and Spread (how a number was spread over a recording)
+    Tracker/                   talking to the Python tracker
+      TrackerClient.cs           starts the tracker and reads its messages
+      TrackerMessage.cs          the shape of the tracker's JSON messages
+      FrameSample.cs             one tracker frame as the app records it
+      TrackingMonitor.cs         decides when tracking counts as lost, and what to tell the user
+    Calibration/               everything that makes and keeps a calibration
+      EyeCheck/                  part 1: open and closed eyes, head angle (window, steps, analysis, check round, report)
+      GazeGrid/                  part 2: the 20-point grid and the head step (GridWindow), and GazeFit, the math
+      Saving/                    the calibration file, the saved ones, the recording, the calibrations window
+      Accuracy/                  the accuracy test and its window
+      Saved/                     your calibrations (made by the app, not in git)
+    Bubble/                    where the bubble ends up, after the calibration
+      Recenter.cs, RecenterWindow  re-center: a dot in the middle, looked at for a moment
+      FineTune.cs, FineTuneWindow  fine-tune: 20 dots, then a last correction on the bubble
+      PositionGuide.cs           the where-to-sit hints: which way to move or tilt, or to re-center
+      HeadPosition.cs            where the head is (face position, size, tilt)
+      HeadModes/                 what moving your head does: cancelled out, nudging the bubble, or both
+    LookToAnswer/              yes / no without hands: look right for yes, left for no
+      LookChoice.cs              the logic, held for 3 seconds
+      ClosedEyesGate.cs          "done looking": eyes closed for 1.5 s before a yes / no counts
+      ChoicePrompt.xaml(.cs)     the yes / no bars, put in any window
+    UI/                        the overlay and pieces the windows share
+      OverlayWindow.xaml(.cs)    the bubble, and the status bar in the bottom left corner
+      MiddleDot.xaml(.cs)        the dot shown whenever you're asked to look at the middle
+      Speaker.cs                 reads instructions out loud
+      SettingSlider.cs           a slider for one setting, built from its description
+      UiColors.cs                the calibration yellow and dark
+    Settings/                  every user setting
+      AppSettings.cs             every setting with its default, range and description
+      SettingsCatalog.cs         the list of all settings, for a settings screen
+      SettingsService.cs         the current settings, changing them, telling the app they changed
+      SettingsStore.cs           saving them (settings.json)
+      TrackerArgs.cs             turns the settings into tracker options
+      SettingAttribute.cs        [Setting], [Section] and [Choice]
+      settings.json              your settings (made by the app, not in git)
+    Input/                     empty for now: moving the cursor and clicking go here
+    assets/mouSEE-logo.png     logo, used as the calibration target
+  tracker/                     Python face tracking
+    face_tracker.py            reads the webcam, finds the face, sends results to the app
+    eye_extractor.py           eye measurements, open/closed and winks, glitch filter, feature vectors
+    gaze_model.py              turns the eye measurements into a point on the screen, with the calibration's numbers
+    tracking_status.py         per frame: is tracking ok, eyes closed, or lost (and why)
+    requirements.txt           Python packages
+    face_landmarker.task       face landmark model (downloaded by make setup)
+    .venv/                     Python virtual environment (created by make setup, not in git)
   persistence/
-    database.py              SQLite schema (users, settings, calibration)
+    database.py                SQLite schema draft (users, settings, calibration), not used yet
   docs/
-    SETUP.md                 installing everything, step by step
-    COMMANDS.md              the commands make runs, for running things by hand
-    SETTINGS.md              every setting, and how to add one
-    SAVED-CALIBRATIONS.md    how calibrations are saved and which one is used
-    EYE-CALIBRATION.md       the eye check: its steps, the math, how it's built
-    GEOMETRIC-GAZE-ESTIMATION.md  how iris movement becomes a point on the screen
-    UI/
-      CALIBRATION-WINDOW-OVERVIEW.md      the calibration window: running it, changelog, what's left
-      CALIBRATION-POINT-SPECIFICATIONS.md where the calibration targets are on screen
+    OVERVIEW.md                start here: how it all fits together, what the words mean, where things are
+    SETUP.md                   installing everything, step by step
+    COMMANDS.md                the commands make runs, for running things by hand
+    SETTINGS.md                every setting, the keys, and how to add a setting
+    LOOK-TO-ANSWER.md          answering by looking, and the middle dot
+    calibration/               making a calibration and what's in it
+      SAVED-CALIBRATIONS.md      the calibration file, the recording, which one is used
+      EYE-CALIBRATION.md         the eye check: its steps, the math, how it's built
+      GAZE-FIT.md                how the grid and head step become the gaze numbers
+      GEOMETRIC-GAZE-ESTIMATION.md  the math and every number in gaze_model.py
+      ACCURACY-TEST.md           the accuracy test
+      GRID-POINTS.md             where exactly the grid's points are
+      GRID-WINDOW-HISTORY.md     the grid screen's changelog
+    bubble/                    using a calibration day to day
+      RE-CENTER.md               re-centering
+      FINE-TUNE.md               fine-tuning, and why the curves
+      WHERE-TO-SIT.md            the where-to-sit hints
+      HEAD-MODES.md              the head modes and the nudge
   tests/
-    test_eye_extractor.py    tests for eye_extractor.py
-    test_tracking_status.py  tests for tracking_status.py
-    test_gaze_model.py       tests for gaze_model.py
-    test_face_tracker.py     tests for face_tracker.py (camera listing)
-    app.Tests/               tests for the C# app (settings, TrackingMonitor)
-  Makefile                   shortcuts for setup, building and running (make setup, make run, ...)
+    test_*.py                  Python tests, one per tracker file
+    app.Tests/                 C# tests, in the same folders as app/ (Calibration/GazeGrid/GazeFitTests.cs...)
+  Makefile                     shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
-**App.xaml.cs** starts the app. Normally it opens the overlay; with `--calibration-preview` it opens the calibration window instead.
+**App.xaml.cs** starts the app. Normally it opens the overlay (and the re-center, or the "calibrate now?" question); with `--calibration-preview` it opens the grid screen instead. It also runs the calibration: the eye check, then the grid, then saving and fitting what they measured.
 
-**TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes it the camera settings and the app's command line options, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
+**Tracker/TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes it the camera settings and the app's command line options, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
 
-**OverlayWindow** is a small always-on-top readout in the bottom left corner: a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses, **Ctrl+Alt+C** opens the saved calibrations. In the camera window, plain **q**, **p** and **c** do the same.
+**OverlayWindow** covers the screen without getting in the way: it draws the bubble where you look, and in the bottom left corner a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses, **Ctrl+Alt+C** opens the saved calibrations, **Ctrl+Alt+R** re-centers, **Ctrl+Alt+F** fine-tunes. In the camera window, plain **q**, **p**, **c**, **r** and **f** do the same. A yellow bar under the status bar says when you've moved too far from where you sat during calibration (and which way to go), or when a re-center would help.
 
-**TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything, and knows when the user paused tracking. `CanMoveCursor` is what the cursor code should check later. The timings come from the settings.
+**Tracker/TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything, and knows when the user paused tracking. `CanMoveCursor` is what the cursor code should check later. The timings come from the settings.
 
 **Settings** are in `app/Settings/`, see [Settings](#settings).
 
-**CalibrationWindow** walks through nine points on the screen. So far it's only the screen, it doesn't record any gaze data yet. It has events for the calibration code to hook into later, see `docs/UI/CALIBRATION-WINDOW-OVERVIEW.md`.
+**GridWindow** (`app/Calibration/GazeGrid/`) is the grid screen: 20 points on the screen (5 columns by 4 rows), then the head step. The gaze is fitted to where your eyes were for each (`GazeFit`), see [docs/calibration/GAZE-FIT.md](docs/calibration/GAZE-FIT.md) and [docs/calibration/GRID-WINDOW-HISTORY.md](docs/calibration/GRID-WINDOW-HISTORY.md).
 
-**The eye check** (EyeCheckWindow) is the first part of a new calibration. It reads out instructions (close one eye, close both, tilt your head...), checks you did each one and repeats it if not, and works out per-person values for when an eye counts as closed and how far the head can turn. It only needs your eyes and head, no hands. Its questions (begin, continue) are answered by looking right for yes or left for no for 3 seconds, and so are the startup question and the nine-point screen's. Then it checks them with the tracker using them. The nine-point screen follows. See [docs/EYE-CALIBRATION.md](docs/EYE-CALIBRATION.md).
+**The eye check** (`app/Calibration/EyeCheck/`) is the first part of a new calibration. It reads out instructions (close one eye, close both, tilt your head...), checks you did each one and repeats it if not, and works out per-person values for when an eye counts as closed and how far the head can turn. It only needs your eyes and head, no hands. Its questions (begin, continue) are answered by looking right for yes or left for no for 3 seconds, and so are the startup question and the grid screen's. Then it checks them with the tracker using them. The grid screen follows. See [docs/calibration/EYE-CALIBRATION.md](docs/calibration/EYE-CALIBRATION.md).
 
-**Saved calibrations** are kept in `app/Calibration/Saved/`, one file each, and the last one you used is the one in use. If there are none yet, mouSEE asks on startup if you want to calibrate, otherwise it uses default values. **CalibrationsWindow** (Ctrl+Alt+C) lists them so you can switch, delete or make a new one. See [docs/SAVED-CALIBRATIONS.md](docs/SAVED-CALIBRATIONS.md).
+**Saved calibrations** are kept in `app/Calibration/Saved/`, one file each, and the last one you used is the one in use. If there are none yet, mouSEE asks on startup if you want to calibrate, otherwise it uses default values. **CalibrationListWindow** (Ctrl+Alt+C, in `app/Calibration/Saving/`) lists them so you can switch, delete or make a new one, and picks the head mode. See [docs/calibration/SAVED-CALIBRATIONS.md](docs/calibration/SAVED-CALIBRATIONS.md).
 
 **face_tracker.py** opens the webcam at 1920x1080 / 60 fps (or the closest thing the camera supports), runs MediaPipe Face Landmarker on every frame and prints the results. Coordinates are mirrored like a selfie camera, but "left eye" always means your actual left eye. With `--preview` it also opens a window showing what it sees. The comment at the top of the file describes the output format.
 
@@ -130,13 +145,15 @@ mouSEE/
 
 **Makefile** has shortcuts so you don't have to remember the individual commands. See [Make commands](#make-commands).
 
-The empty folders are placeholders for features that haven't been written yet. Each has a `.gitkeep` file so git keeps the folder; delete it once real files go in.
+`app/Input/` is a placeholder for moving the cursor and clicking (e.g. blink to click), which haven't been written yet. It has a README.md saying so.
 
-- `app/Input/`: moving the cursor and clicking (e.g. blink to click)
+**The bubble** (`app/Bubble/`): after the calibration puts the bubble roughly where you look, the re-center and fine-tune correct it for how you sit today, the head modes decide what moving your head does, and the where-to-sit hints tell you when you moved too far. See the [docs/bubble/](docs/bubble/) docs.
+
+**Answering by looking** (`app/LookToAnswer/`): every question in the calibration screens is answered by looking right for yes or left for no. See [docs/LOOK-TO-ANSWER.md](docs/LOOK-TO-ANSWER.md).
 
 ## Settings
 
-Settings are saved in `app/Settings/settings.json`, which the app creates with the defaults the first time it runs. It's not in git, everyone has their own. There's no settings screen yet, so edit the file and restart the app.
+Settings are saved in `app/Settings/settings.json`, which the app creates with the defaults the first time it runs. It's not in git, everyone has their own. There's no settings screen yet, except the head mode, nudge and where-to-sit sliders in the calibrations window (Ctrl+Alt+C). For everything else, close the app, edit the file and start it again.
 
 [docs/SETTINGS.md](docs/SETTINGS.md) lists every setting with its default and what it does, and explains how to use them in code, hook them up to a settings screen, and add new ones.
 
@@ -179,7 +196,7 @@ An overlay shows up in the bottom left corner of the screen. The coloured bar at
 | Red | Something's wrong | "Can't see your face, sit in front of the camera", "Head turned too far, face the screen", "Eyes are covered", "Tracker not responding" |
 | Grey | Starting up, or paused | "Starting camera...", "Paused" |
 
-Short problems like a blink or a one-frame glitch don't show up: something has to be wrong for half a second before the bar turns red, and after a problem it waits for a moment of good tracking before going green again. The rules are in `app/Gaze/TrackingMonitor.cs`.
+Short problems like a blink or a one-frame glitch don't show up: something has to be wrong for half a second before the bar turns red, and after a problem it waits for a moment of good tracking before going green again. The rules are in `app/Tracker/TrackingMonitor.cs`.
 
 Below the bar is the raw readout, something like:
 
@@ -200,7 +217,7 @@ gaze h +0.012  v -0.034  center
 
 Everything should change as you move. A camera window also opens, showing the landmarks on your face. It only updates at 30 fps to save CPU, the overlay shows the actual tracking speed.
 
-To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations. The Ctrl+Alt keys work from any program, q, p and c only while the camera window is focused.
+To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations, **Ctrl+Alt+R** (or `r`) re-centers: look at the dot in the middle for a moment, and the bubble fits how you're sitting now. It also runs when mouSEE starts. **Ctrl+Alt+F** (or `f`) fine-tunes: 20 dots, then the bubble is corrected to land on them, and you choose whether to keep it. The calibrations window also picks what your head does: cancelled out, nudging the bubble, or both (see [docs/bubble/HEAD-MODES.md](docs/bubble/HEAD-MODES.md)). The Ctrl+Alt keys work from any program, q, p, c, r and f only while the camera window is focused.
 
 ### Calibration screen
 
@@ -208,7 +225,7 @@ To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ct
 make run ARGS="--calibration-preview"
 ```
 
-Opens the nine-point calibration screen instead of the overlay. It's only a walkthrough of the screens for now and doesn't record anything. Close it with its close button.
+Opens only the grid calibration screen instead of the overlay. Accepting saves a calibration without eye check values. Close it with its close button.
 
 ## Unit tests
 
@@ -225,7 +242,7 @@ tracker/.venv/Scripts/python -m unittest discover -s tests -v   # Python
 dotnet test tests/app.Tests                                     # C#
 ```
 
-Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The C# tests cover the settings (defaults, clamping, the JSON file, command line overriding the file) and TrackingMonitor (timings from the settings, pause and resume). The tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases. `test_tracking_status` checks each ok / eyes_closed / lost case.
+Use the `.venv` Python, the packages the tests need aren't installed in your normal Python. The C# tests cover the settings, TrackingMonitor, the eye check, the gaze fit, saved calibrations, re-center, fine-tune, the accuracy test, the head modes and answering by looking. The Python tests cover eye extraction, the eye validator (glitch rejection, blinks, recovering after a real change), wink detection, feature vector generation, translation/scale invariance, and edge cases. `test_tracking_status` checks each ok / eyes_closed / lost case.
 
 ## Make commands
 

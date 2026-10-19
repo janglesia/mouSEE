@@ -20,6 +20,8 @@ public static class TrackerArgs
             "--min-confidence", settings.Advanced.DetectionConfidence.ToString(CultureInfo.InvariantCulture),
         };
         if (camera.ShowPreview) args.Add("--preview");
+        // the nudge head mode: head movement stays in the gaze (docs/bubble/HEAD-MODES.md)
+        if (!settings.Head.Mode.Cancels()) args.Add("--no-head-compensation");
         if (calibrationFile is not null) args.AddRange(["--calibration", calibrationFile]);
         args.AddRange(commandLine);
         return args.ToArray();
