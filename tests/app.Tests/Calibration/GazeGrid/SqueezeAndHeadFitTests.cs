@@ -119,6 +119,55 @@ public class SqueezeAndHeadFitTests
     }
 
     [Fact]
+    public void Head_step_has_dots_all_over_the_screen_for_every_pose()
+    {
+        // leaning at the top and bottom too, tilting on the left and right too
+        foreach (var pose in new[] { HeadPose.LeanLeft, HeadPose.LeanRight, HeadPose.HeadUp, HeadPose.HeadDown })
+        {
+            var dots = HeadPose.Step.Where(s => s.Pose == pose).ToList();
+            Assert.Equal(4, dots.Count);
+            Assert.Equal(2, dots.Select(d => d.X).Distinct().Count());
+            Assert.Equal(2, dots.Select(d => d.Y).Distinct().Count());
+        }
+    }
+
+    [Fact]
+    public void Predict_puts_the_head_dots_where_they_were()
+    {
+        // the dots are made so the head corrections put each exactly on its target, Predict has to agree with the fit
+        var dots = HeadDots(Base, gain: 0.5, shrink: -6, yPitch: 0.02, yLean: 0.8);
+        var (model, _) = GazeFit.FitHead(Base, new GazeFitReport(), dots, 0.5, -15);
+
+        foreach (var t in dots)
+        {
+            var (x, y) = GazeFit.Predict(model, t, headCorrections: true)!.Value;
+            Assert.Equal(t.X, x, 3);
+            Assert.Equal(t.Y, y, 3);
+        }
+        // without the head corrections (the head modes that turn them off) the leaning dots land elsewhere
+        var leaning = dots.First(t => t.Pose == HeadPose.LeanLeft);
+        Assert.NotEqual(leaning.X, GazeFit.Predict(model, leaning, headCorrections: false)!.Value.X, 2);
+    }
+
+    [Fact]
+    public void Predict_matches_the_tracker()
+    {
+        // the numbers of a real calibration (2026-10-19 22:07), and what estimate_gaze() in gaze_model.py gives for these eyes
+        var model = new GazeModel
+        {
+            KH = 3, LeftHBaseline = -0.16, RightHBaseline = 0.138, CenterX = 0.4972, GainX = 4.2466, HeadXGain = 0.7858, HeadXRef = 0.482,
+            YConst = 0.4681, YOpenness = 11.8172, YIris = 6.7866, YArc = 0.2673, YOpennessSq = -35.1968, XSqueeze = -13.7007,
+            OpennessRef = 0.3085, HeadXShrink = 2.5317, HeadYPitch = 0.02096, HeadYLean = 0.4108, PitchRef = -13.7,
+        };
+        var (x, y) = GazeFit.Predict(model, -0.31, -0.05, -0.03, -0.04, (0.33 + 0.35) / 2, 0.52, -11.0);
+        Assert.Equal(0.3064, x, 4);
+        Assert.Equal(0.2527, y, 4);
+        (x, y) = GazeFit.Predict(model, -0.31, -0.05, -0.03, -0.04, (0.33 + 0.35) / 2, null, null);
+        Assert.Equal(0.2819, x, 4);
+        Assert.Equal(0.1805, y, 4);
+    }
+
+    [Fact]
     public void Not_tilting_enough_leaves_the_tilt_out()
     {
         var dots = HeadDots(Base, gain: 0.5, shrink: -6, yPitch: 0.02, yLean: 0.8, tilt: 1);

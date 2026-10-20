@@ -15,6 +15,8 @@ public sealed record GazeTargetSummary
     public bool MoveHead { get; init; }
     // the head step: how the head was held (HeadPose), null sitting normally
     public string? Pose { get; init; }
+    // one of the fine-tune's dots (CalibrationTarget.FineTune), fitted together with the grid's
+    public bool FineTune { get; init; }
     public int Frames { get; init; }
     // frames with the face found and both eyes open and not covered, the ones a gaze fit should use
     public int UsableFrames { get; init; }
@@ -60,6 +62,7 @@ public sealed record GazeTargetSummary
             IsValidation = target.IsValidation,
             MoveHead = target.MoveHead,
             Pose = target.Pose,
+            FineTune = target.FineTune,
             Frames = frames.Count,
             UsableFrames = usable.Count,
             LeftH = Spread.Of(usable.Select(f => (double?)f.Left!.OffsetH)),
@@ -85,4 +88,7 @@ public sealed record GazeTargetSummary
 // Every frame of every try, reaction time included, so the analysis can be run again on them later
 
 public sealed record TargetRecording(int Index, double X, double Y, bool IsValidation, List<FrameSample> Frames, bool MoveHead = false,
-                                     string? Pose = null);
+                                     string? Pose = null, bool FineTune = false)
+{
+    public CalibrationTarget Target => new(Index, X, Y, IsValidation, MoveHead, Pose, FineTune);
+}

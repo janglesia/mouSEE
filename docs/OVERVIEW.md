@@ -4,7 +4,7 @@ New to the project? Read this page first. It explains what mouSEE does, how the 
 
 ## What it does
 
-mouSEE lets someone point at the screen with their eyes, using only a normal webcam. It's an accessibility tool for people who can't use their hands, so everything is meant to work hands-free: instructions are read out loud, and questions are answered by looking left or right.
+mouSEE lets someone point at the screen with their eyes, using only a normal webcam. It's an accessibility tool for people who can't use their hands, so everything is meant to work hands-free: the calibration's instructions are read out loud, and questions are answered by looking left or right. Outside the calibration it stays quiet (the start-up re-center and the "calibrate now?" question are on screen only).
 
 **Where it is today:** the camera tracks your face and eyes, a calibration learns how your eyes map to the screen, and a **bubble** (a small circle on the screen) shows where mouSEE thinks you're looking. **Moving the real mouse cursor and clicking aren't built yet.** That's the next big step, and it will use the bubble's position.
 
@@ -57,13 +57,12 @@ The words that come up everywhere, in the order a user meets them:
 | Word | What it is | When it happens |
 |------|------------|-----------------|
 | **Calibration** | Everything mouSEE learns about one person, saved as one file. You can have several and switch between them. | Made once, used every time |
-| **Eye check** | First part of a calibration: open and closed eyes, and how you hold your head. Spoken instructions, about 1.5 minutes. | Start of a new calibration |
-| **Grid** | Second part: the mouSEE logo moves to 20 places (5 × 4) and you look at each one. That teaches it where on the screen your eyes point. | After the eye check |
-| **Head step** | End of the grid: a few dots while leaning left and right and tilting your head up and down, so it learns what moving your head does. | After the grid |
-| **Gaze fit** | The math that turns the grid and head step into the numbers the tracker uses (`GazeFit`, in `app/Calibration/GazeGrid/`). | When you accept the grid |
+| **Grid** | First part of a calibration: the mouSEE logo moves to 20 places (5 × 4) and you look at each one. That teaches it where on the screen your eyes point. | Start of a new calibration |
+| **Head step** | End of the grid: 16 dots while leaning left and right and tilting your head up and down, so it learns what moving your head does. | After the grid's 20 places |
+| **Gaze fit** | The math that turns the grid and head step into the numbers the tracker uses (`GazeFit`, in `app/Calibration/GazeGrid/`). | At the end of the grid, before its preview |
+| **Eye check** | Last part of a calibration: you close both eyes a few times, so it learns when your eyes count as closed. Spoken instructions, under a minute. | After the grid's preview |
 | **Re-center** | Look at a dot in the middle for 2 seconds. Corrects a small shift from sitting a bit differently today. | Every start, or Ctrl+Alt+R |
-| **Fine-tune** | 20 dots, and the bubble gets a final correction so it lands on them. For when the bubble is off on a later day. | When you want, Ctrl+Alt+F |
-| **Accuracy test** | Dots all over the screen, sitting normally and leaning and tilting. It only measures how far off the bubble is, nothing changes. | When you want, from the calibrations window |
+| **Accuracy test and fine-tune** | Dots all over the screen, sitting normally and leaning and tilting. It shows how far off the bubble is, then the calibration is fitted again with the dots and the bubble gets a final correction so it lands on them, kept if you want. For when the bubble is off on a later day. | When you want, Ctrl+Alt+F or from the calibrations window |
 | **Head modes** | What moving your head does. **Eyes only** (default): nothing, the calibration's head correction undoes it. **Eyes + head nudge**: the same, plus the nudge. **Eyes + head nudge, no head correction**: the nudge without the head correction, for comparing. | Picked in the calibrations window |
 | **Nudge** | Your eyes stop on a spot, the bubble turns yellow and holds, and turning or tilting your head pushes it the last bit. | In the nudge head modes |
 | **Where-to-sit hints** | A yellow bar on the overlay: "Move a little to your left", "Tilt your head up a little"... because the calibration only knows the head near where it was. | While using mouSEE |
@@ -72,9 +71,9 @@ The words that come up everywhere, in the order a user meets them:
 ## What a user sees
 
 1. **First start:** "Calibrate now?" Look right for yes.
-2. **Eye check**, then the **grid**, then the **head step**. The calibration is saved and used straight away.
+2. The **grid**, then the **head step**. Then a preview: the bubble live with the new calibration, keep it or do the grid again. Then the **eye check**.
 3. **Every start:** a quick **re-center**, then the overlay: a status bar in the bottom left, and the bubble where you look.
-4. **Keys:** Ctrl+Alt+C calibrations, Ctrl+Alt+R re-center, Ctrl+Alt+F fine-tune, Ctrl+Alt+P pause, Ctrl+Alt+Q quit. The same letters without Ctrl+Alt work in the camera window.
+4. **Keys:** Ctrl+Alt+C calibrations, Ctrl+Alt+R re-center, Ctrl+Alt+F accuracy test and fine-tune, Ctrl+Alt+P pause, Ctrl+Alt+Q quit. The same letters without Ctrl+Alt work in the camera window.
 
 ## Where things are
 
@@ -89,7 +88,7 @@ The code is grouped by feature: each folder has the logic and the window for one
 | `app/Calibration/EyeCheck/` | the **eye check**: its window, its steps, working out the values, the check round, what it saves |
 | `app/Calibration/GazeGrid/` | the **grid** and the **head step**: `GridWindow` (the screen), `CalibrationTarget` (the points and head poses), `GazeFit` (the math, in four files) |
 | `app/Calibration/Saving/` | the **calibration file** (`CalibrationProfile`), the saved ones (`CalibrationStore`), the raw frames (`CalibrationRecording`), the calibrations window (`CalibrationListWindow`) |
-| `app/Calibration/Accuracy/` | the **accuracy test** and its window |
+| `app/Calibration/Accuracy/` | the **accuracy test and fine-tune**, and its window |
 | `app/Bubble/` | what happens to the bubble after the calibration: **re-center**, **fine-tune**, the **where-to-sit hints** (`PositionGuide`), and `HeadModes/` (the **head modes** and the **nudge**) |
 | `app/LookToAnswer/` | **answering by looking**: `LookChoice` (the logic), `ClosedEyesGate` ("done looking"), `ChoicePrompt` (the yes / no bars) |
 | `app/UI/` | the **overlay** (`OverlayWindow`, which draws the bubble) and pieces the windows share: `Speaker` (reads out loud), `MiddleDot`, `SettingSlider`, `UiColors` |

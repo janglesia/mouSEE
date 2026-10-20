@@ -153,7 +153,7 @@ public partial class OverlayWindow : Window
                 break;
             case HOTKEY_FINETUNE:
                 handled = true;
-                ((App)Application.Current).StartFineTune();
+                ((App)Application.Current).StartAccuracyTest(); // the accuracy test is the fine-tune too
                 break;
         }
         return IntPtr.Zero;

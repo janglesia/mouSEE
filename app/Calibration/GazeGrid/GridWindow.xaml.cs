@@ -11,9 +11,9 @@ namespace app.Calibration.GazeGrid;
 
 // The grid screen: the mouSEE logo goes to 20 places (5 columns by 4 rows), the frames while each ring fills are
 // recorded (App.StartGazeCalibration does that through the events below), then the head step, then the result.
-// The gaze is fitted to it when you accept (GazeFit). One class in three files: this one (setup, the tracker, which
-// panel shows), GridWindow.Sequence.cs (the 20 points and the head step) and GridWindow.Results.cs (the result
-// screen and the visual test).
+// "Try it out" there saves it and fits the gaze (GazeFit), then the preview shows the bubble with it: keep it, or do
+// the grid again. One class in three files: this one (setup, the tracker, which panel shows), GridWindow.Sequence.cs
+// (the 20 points and the head step) and GridWindow.Results.cs (the result screen and the preview).
 public partial class GridWindow : Window
 {
     // ---- sequence tuning ----
@@ -31,8 +31,6 @@ public partial class GridWindow : Window
     private const double MinSolidTargetRatio = 0.6;   // a target counts if both eyes were tracked in this share of its capture frames
     private const double StableRatio = 0.90;          // share of capture frames with both eyes tracked: Stable at or above this
     private const double FairRatio = 0.70;            // Some dropouts at or above this, Unstable below
-    private const double GoodErrorFraction = 0.05;    // mean validation error as a fraction of screen width: Good at or below this
-    private const double FairErrorFraction = 0.09;    // Fair at or below this, Poor above
 
     // Normalized screen positions (0-1), snake order so the target never jumps back across the screen.
     // 5 columns by 4 rows: with only 3 by 3 the fit couldn't see the curves (the sides of the screen reading higher than
@@ -41,8 +39,9 @@ public partial class GridWindow : Window
     private const int Columns = 5, Rows = 4;
     private static readonly (double X, double Y)[] Targets = BuildTargets();
 
-    // Accuracy-check targets, inside the calibration grid. The mapping must NOT be fitted on these.
-    private static readonly (double X, double Y)[] ValidationTargets = [(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)];
+    // the head step's targets are numbered from here: after the grid's, and the 4 accuracy-check targets there used to
+    // be in between, so old and new recordings number them the same
+    private static readonly int HeadStepFirstIndex = Targets.Length + 4;
 
     private static (double X, double Y)[] BuildTargets()
     {
@@ -61,7 +60,7 @@ public partial class GridWindow : Window
         return list.ToArray();
     }
 
-    private enum Phase { Intro, Running, Result, Test }
+    private enum Phase { Intro, Running, Result, Preview }
     private enum Level { Unknown, Good, Fair, Poor }
 
     private static readonly Brush Amber = new SolidColorBrush(Color.FromRgb(0xE0, 0xA4, 0x58));
@@ -100,13 +99,11 @@ public partial class GridWindow : Window
     private Stopwatch _sessionClock = new();
 
     // from the backend
-    private CalibrationValidation? _validation;
-    private bool _validationPending;
     private int? _backendCompletedTargets;
     private int? _backendTotalTargets;
     private string? _backendStatus;
 
-    private readonly List<Ellipse> _testRings = new();
+    private readonly List<Ellipse> _previewRings = new();
 
     // what looking right / left answers on the current screen, see AskByLooking
     private Action<bool>? _onChoice;
@@ -119,31 +116,26 @@ public partial class GridWindow : Window
     public event Action<CalibrationTarget>? TargetCaptureStarted;
     /// <summary>The ring is full. Stop sampling this target.</summary>
     public event Action<CalibrationTarget>? TargetAccepted;
-    /// <summary>All calibration targets are done (validation targets are not included). Fit the mapping now.</summary>
+    /// <summary>All calibration targets are done. Fit the mapping now.</summary>
     public event Action? CalibrationCompleted;
-    /// <summary>All validation targets are done (only raised when RunValidation is true). Call ShowValidation with the measured error.</summary>
-    public event Action? ValidationCompleted;
-    /// <summary>The user pressed Accept calibration. Esc or closing the window instead means not accepted.</summary>
+    /// <summary>"Try it out" on the result screen: save and fit it, then the preview. Esc or closing before that means not accepted.</summary>
     public event Action? CalibrationAccepted;
     public event Action? CalibrationCancelled;
 
-    /// <summary>
-    /// Set to true before the user presses Begin to show 4 extra accuracy-check targets after the calibration targets.
-    /// Leave it false until a backend exists that can measure the error, otherwise the user waits for nothing.
-    /// Starts out as the "Run accuracy check" setting.
-    /// </summary>
-    public bool RunValidation { get; set; } = ((App)Application.Current).Settings.Current.Calibration.RunAccuracyCheck;
-
-    /// <summary>
-    /// Maps a tracker frame to a gaze position on screen (0-1 on both axes), or null if there isn't one.
-    /// When set, the results screen offers "Test tracking": a dot follows the predicted gaze so the user can check it.
-    /// </summary>
-    public Func<TrackerMessage, (double X, double Y)?>? GazePredictor { get; set; }
+    /// <summary>"Do the grid again" in the preview: what accepting saved has to be put back.</summary>
+    public event Action? CalibrationDiscarded;
 
     public GridWindow()
     {
         InitializeComponent();
         Choice.Chosen += yes => _onChoice?.Invoke(yes);
+        // the preview's question, once the eyes were closed ("done looking")
+        Choice.Ready += () =>
+        {
+            if (_phase == Phase.Preview)
+                _ = _speaker.SayAsync("To keep it, look to the right for three seconds. To do the grid again, look to the left.",
+                                      CancellationToken.None);
+        };
 
         // Cover the whole primary screen, taskbar included, so normalized target positions are screen positions.
         Left = 0;
@@ -192,20 +184,6 @@ public partial class GridWindow : Window
     // Public API for the backend
     // =====================================================================
 
-    /// <summary>Accuracy measured on the validation targets. Can be called any time, including while the results are on screen.</summary>
-    public void ShowValidation(CalibrationValidation validation)
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            _ = Dispatcher.InvokeAsync(() => ShowValidation(validation));
-            return;
-        }
-
-        _validation = validation;
-        _validationPending = false;
-        if (_phase == Phase.Result) RefreshResult();
-    }
-
     public void ReportBackendProgress(int completedTargets, int totalTargets)
     {
         if (totalTargets <= 0)
@@ -249,8 +227,8 @@ public partial class GridWindow : Window
         if (e.Key == Key.Escape)
         {
             e.Handled = true;
-            if (_phase == Phase.Test) ShowPhase(Phase.Result);
-            else Close();
+            // in the preview it's already saved, closing keeps it
+            Close();
         }
         else if (_phase == Phase.Intro && e.Key is (Key.Space or Key.Enter))
         {
@@ -264,11 +242,22 @@ public partial class GridWindow : Window
 
     private void AcceptButton_Click(object sender, RoutedEventArgs e) => Accept();
 
+    // saves and fits it (App.StartGazeCalibration), then shows the preview: keep it, or do the grid again
     private void Accept()
     {
         _sessionEnded = true; // so closing doesn't count as a cancel
         CalibrationAccepted?.Invoke();
-        Close();
+        _ = ShowPreviewAsync();
+    }
+
+    private void KeepButton_Click(object sender, RoutedEventArgs e) => Close();
+    private void RedoButton_Click(object sender, RoutedEventArgs e) => Redo();
+
+    // "do the grid again": what accepting saved is put back, then the intro
+    private void Redo()
+    {
+        CalibrationDiscarded?.Invoke();
+        TryAgain();
     }
 
     private void TryAgainButton_Click(object sender, RoutedEventArgs e) => TryAgain();
@@ -281,8 +270,6 @@ public partial class GridWindow : Window
         ShowPhase(Phase.Intro);
     }
 
-    private void TestButton_Click(object sender, RoutedEventArgs e) => EnterTestMode();
-    private void BackToResultButton_Click(object sender, RoutedEventArgs e) => ShowPhase(Phase.Result);
 
     // =====================================================================
     // Tracker frames
@@ -321,7 +308,7 @@ public partial class GridWindow : Window
                     if (DescribeTracking(msg).Ready) _dwellReady++;
                 }
                 break;
-            case Phase.Test:
+            case Phase.Preview:
                 UpdateGazeDot(msg);
                 break;
         }
@@ -418,13 +405,13 @@ public partial class GridWindow : Window
         ResultPanel.Visibility = phase == Phase.Result ? Visibility.Visible : Visibility.Collapsed;
         TargetLayer.Visibility = phase == Phase.Running ? Visibility.Visible : Visibility.Collapsed;
         ProgressPanel.Visibility = phase == Phase.Running ? Visibility.Visible : Visibility.Collapsed;
-        TestLayer.Visibility = phase == Phase.Test ? Visibility.Visible : Visibility.Collapsed;
-        TestBar.Visibility = phase == Phase.Test ? Visibility.Visible : Visibility.Collapsed;
+        PreviewLayer.Visibility = phase == Phase.Preview ? Visibility.Visible : Visibility.Collapsed;
+        PreviewBar.Visibility = phase == Phase.Preview ? Visibility.Visible : Visibility.Collapsed;
         Cursor = phase == Phase.Running ? Cursors.None : Cursors.Arrow;
         EscHint.Text = phase switch
         {
             Phase.Result => "Esc to close without accepting",
-            Phase.Test => "Esc to go back",
+            Phase.Preview => "Esc to keep it and close",
             _ => "Esc to cancel",
         };
         if (phase == Phase.Running) UpdateWarning();
@@ -443,7 +430,12 @@ public partial class GridWindow : Window
                 break;
             case Phase.Result:
                 _onChoice = yes => { if (yes) Accept(); else TryAgain(); };
-                Choice.Ask("Accept this calibration", "Try again");
+                Choice.Ask("Try it out", "Do the grid again");
+                break;
+            case Phase.Preview:
+                // nothing counts while the tracker restarts, the question comes once the new calibration runs (ShowPreviewAsync)
+                _onChoice = null;
+                Choice.Stop();
                 break;
             default:
                 // while the targets move the eyes look everywhere, that mustn't answer anything

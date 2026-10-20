@@ -10,9 +10,10 @@ public partial class RecenterWindow : Window
 {
     // the tracker can take a few seconds to start, wait for it this long
     private const int TrackerTimeoutMs = 30000;
+    // time to find the dot before it starts looking (there's no voice to wait for)
+    private const int ReadMs = 700;
 
     private readonly App _app = (App)Application.Current;
-    private readonly Speaker _speaker = new();
     private readonly Stopwatch _clock = new();
     private readonly CancellationTokenSource _cts = new();
     private List<FrameSample>? _recording;
@@ -41,7 +42,6 @@ public partial class RecenterWindow : Window
         Closed += (_, _) =>
         {
             _app.Tracker.MessageReceived -= OnTrackerMessage;
-            _speaker.Dispose();
         };
     }
 
@@ -73,9 +73,10 @@ public partial class RecenterWindow : Window
             }
             _bubbleSeen = null;
 
+            // nothing said out loud: this runs every time mouSEE starts, and talking then gets old fast. the dot and
+            // the text are enough, about as long as saying it took to find the dot
             MessageText.Text = "Look at the dot";
-            await _speaker.SayAsync("Look at the dot.", ct);
-            await Task.Delay(Recenter.SettleMs, ct);
+            await Task.Delay(ReadMs + Recenter.SettleMs, ct);
 
             var frames = new List<FrameSample>();
             _clock.Restart();
@@ -96,7 +97,7 @@ public partial class RecenterWindow : Window
             }
             _app.SetOffset(offset, at);
             Speaker.Ding();
-            await FinishAsync("Done", ct, sayIt: false, holdMs: 500);
+            await FinishAsync("Done", ct, holdMs: 500);
         }
         catch (OperationCanceledException)
         {
@@ -104,10 +105,9 @@ public partial class RecenterWindow : Window
         }
     }
 
-    private async Task FinishAsync(string message, CancellationToken ct, bool sayIt = true, int holdMs = 2500)
+    private async Task FinishAsync(string message, CancellationToken ct, int holdMs = 3500)
     {
         MessageText.Text = message;
-        if (sayIt) await _speaker.SayAsync(message, ct);
         await Task.Delay(holdMs, ct);
         Close();
     }

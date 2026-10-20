@@ -51,14 +51,14 @@ mouSEE/
       FrameSample.cs             one tracker frame as the app records it
       TrackingMonitor.cs         decides when tracking counts as lost, and what to tell the user
     Calibration/               everything that makes and keeps a calibration
-      EyeCheck/                  part 1: open and closed eyes, head angle (window, steps, analysis, check round, report)
-      GazeGrid/                  part 2: the 20-point grid and the head step (GridWindow), and GazeFit, the math
+      GazeGrid/                  part 1: the 20-point grid and the head step (GridWindow), and GazeFit, the math
+      EyeCheck/                  part 2: closed eyes, from the grid's open ones (window, steps, analysis, check round, report)
       Saving/                    the calibration file, the saved ones, the recording, the calibrations window
-      Accuracy/                  the accuracy test and its window
+      Accuracy/                  the accuracy test and fine-tune, and its window
       Saved/                     your calibrations (made by the app, not in git)
     Bubble/                    where the bubble ends up, after the calibration
       Recenter.cs, RecenterWindow  re-center: a dot in the middle, looked at for a moment
-      FineTune.cs, FineTuneWindow  fine-tune: 20 dots, then a last correction on the bubble
+      FineTune.cs                fine-tune: from the accuracy test's dots, a last correction on the bubble
       PositionGuide.cs           the where-to-sit hints: which way to move or tilt, or to re-center
       HeadPosition.cs            where the head is (face position, size, tilt)
       HeadModes/                 what moving your head does: nothing, or pushing the bubble once it holds (the nudge)
@@ -117,7 +117,7 @@ mouSEE/
   Makefile                     shortcuts for setup, building and running (make setup, make run, ...)
 ```
 
-**App.xaml.cs** starts the app. Normally it opens the overlay (and the re-center, or the "calibrate now?" question); with `--calibration-preview` it opens the grid screen instead. It also runs the calibration: the eye check, then the grid, then saving and fitting what they measured.
+**App.xaml.cs** starts the app. Normally it opens the overlay (and the re-center, or the "calibrate now?" question); with `--calibration-preview` it opens the grid screen instead. It also runs the calibration: the grid, then saving and fitting what it measured, then the eye check, which adds to it.
 
 **Tracker/TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes it the camera settings and the app's command line options, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
 
@@ -129,13 +129,13 @@ mouSEE/
 
 **GridWindow** (`app/Calibration/GazeGrid/`) is the grid screen: 20 points on the screen (5 columns by 4 rows), then the head step. The gaze is fitted to where your eyes were for each (`GazeFit`), see [docs/calibration/GAZE-FIT.md](docs/calibration/GAZE-FIT.md) and [docs/calibration/GRID-WINDOW-HISTORY.md](docs/calibration/GRID-WINDOW-HISTORY.md).
 
-**The eye check** (`app/Calibration/EyeCheck/`) is the first part of a new calibration. It reads out instructions (close one eye, close both, tilt your head...), checks you did each one and repeats it if not, and works out per-person values for when an eye counts as closed and how far the head can turn. It only needs your eyes and head, no hands. Its questions (begin, continue) are answered by looking right for yes or left for no for 3 seconds, and so are the startup question and the grid screen's. Then it checks them with the tracker using them. The grid screen follows. See [docs/calibration/EYE-CALIBRATION.md](docs/calibration/EYE-CALIBRATION.md).
+**The eye check** (`app/Calibration/EyeCheck/`) is the second part of a new calibration, after the grid. It reads out instructions (close both eyes, then the same with your head tilted up and down), checks you did each one and repeats it if not, and works out when your eyes count as closed, against the open eyes the grid recorded. It only needs your eyes and head, no hands. Its questions (begin, continue) are answered by looking right for yes or left for no for 3 seconds, and so are the startup question and the grid screen's. Then it checks the new value with the tracker using it. See [docs/calibration/EYE-CALIBRATION.md](docs/calibration/EYE-CALIBRATION.md).
 
 **Saved calibrations** are kept in `app/Calibration/Saved/`, one file each, and the last one you used is the one in use. If there are none yet, mouSEE asks on startup if you want to calibrate, otherwise it uses default values. **CalibrationListWindow** (Ctrl+Alt+C, in `app/Calibration/Saving/`) lists them so you can switch, delete or make a new one, and picks the head mode. See [docs/calibration/SAVED-CALIBRATIONS.md](docs/calibration/SAVED-CALIBRATIONS.md).
 
 **face_tracker.py** opens the webcam at 1920x1080 / 60 fps (or the closest thing the camera supports), runs MediaPipe Face Landmarker on every frame and prints the results. Coordinates are mirrored like a selfie camera, but "left eye" always means your actual left eye. With `--preview` it also opens a window showing what it sees. The comment at the top of the file describes the output format.
 
-**eye_extractor.py** works out, for each eye, where the iris is within the eye, how open the eye is, whether it's closed (winks included) or covered by something like a hand (both checked in the camera image: is the dark iris visible, and is there any contrast at all), and combines the usable eyes into one gaze value. `EyeValidator` throws away frames where an eye suddenly jumps (MediaPipe glitches). It also builds the feature vectors that calibration will use.
+**eye_extractor.py** works out, for each eye, where the iris is within the eye, how open the eye is, whether it's closed (winks included) or covered by something like a hand (checked in the camera image: are the lids shut or the dark iris hidden, and is there any contrast at all), and combines the usable eyes into one gaze value. `EyeValidator` throws away frames where an eye suddenly jumps (MediaPipe glitches). It also builds the feature vectors that calibration will use.
 
 **tracking_status.py** labels every frame `ok`, `eyes_closed` or `lost`, and for `lost` says why: no face, face cut off at the edge, head turned too far, eyes not found, too far from the camera, or eyes covered. It only looks at one frame at a time; deciding when a problem has lasted long enough to count is left to the app, so a blink doesn't count as losing tracking.
 
@@ -217,7 +217,7 @@ gaze h +0.012  v -0.034  center
 
 Everything should change as you move. A camera window also opens, showing the landmarks on your face. It only updates at 30 fps to save CPU, the overlay shows the actual tracking speed.
 
-To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations, **Ctrl+Alt+R** (or `r`) re-centers: look at the dot in the middle for a moment, and the bubble fits how you're sitting now. It also runs when mouSEE starts. **Ctrl+Alt+F** (or `f`) fine-tunes: 20 dots, then the bubble is corrected to land on them, and you choose whether to keep it. The calibrations window also picks what your head does: Eyes only, or Eyes + head nudge, where the bubble holds when your eyes rest and your head pushes it the last bit (see [docs/bubble/HEAD-MODES.md](docs/bubble/HEAD-MODES.md)). The Ctrl+Alt keys work from any program, q, p, c, r and f only while the camera window is focused.
+To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ctrl+Alt+P**, or `p` in the camera window. Pausing stops the gaze bubble and turns the bar grey, press it again to carry on. **Ctrl+Alt+C** (or `c` in the camera window) opens the saved calibrations, **Ctrl+Alt+R** (or `r`) re-centers: look at the dot in the middle for a moment, and the bubble fits how you're sitting now. It also runs when mouSEE starts. **Ctrl+Alt+F** (or `f`) runs the accuracy test and fine-tune: dots all over the screen, then where the bubble landed and the bubble corrected to land on them, and you choose whether to keep it. The calibrations window also picks what your head does: Eyes only, or Eyes + head nudge, where the bubble holds when your eyes rest and your head pushes it the last bit (see [docs/bubble/HEAD-MODES.md](docs/bubble/HEAD-MODES.md)). The Ctrl+Alt keys work from any program, q, p, c, r and f only while the camera window is focused.
 
 ### Calibration screen
 
@@ -225,7 +225,7 @@ To quit, press **Ctrl+Alt+Q**, or `q` in the camera window. To pause, press **Ct
 make run ARGS="--calibration-preview"
 ```
 
-Opens only the grid calibration screen instead of the overlay. Accepting saves a calibration without eye check values. Close it with its close button.
+Opens only the grid calibration screen instead of the overlay, without the eye check after it. Keeping it at the end saves a calibration without eye check values. Close it with its close button.
 
 ## Unit tests
 

@@ -6,7 +6,7 @@ import cv2
 
 from tracker.eye_extractor import (extract_eyes, extract_feature_vector, eye_contrast, iris_ratio, EyeValidator,
                                    MAX_REJECTIONS, COVERED_CONTRAST, IRIS_HIDDEN_RATIO, LIDS_OPEN_OPENNESS,
-                                   LOOKING_DOWN_MIN_OPENNESS)
+                                   LIDS_SHUT_OPENNESS, LOOKING_DOWN_MIN_OPENNESS)
 
 
 RIGHT_EYE = {
@@ -463,6 +463,25 @@ class CoveredEyeTest(unittest.TestCase):
         self.assertLess(eyes["left"]["openness"], LOOKING_DOWN_MIN_OPENNESS)
         self.assertTrue(eyes["left"]["closed"])
         self.assertTrue(eyes["right"]["closed"])
+
+    # both eyes shut, but the iris spot isn't bright (0.51-0.62 in a recording: lashes, the shadow under the lid). the
+    # lids alone say it, the iris check used to miss this
+    def test_shut_lids_are_closed_even_when_the_iris_spot_is_dark(self):
+        lm = close_lids(close_lids(face_with_outlines(), "left", gap=0.01), "right", gap=0.01)
+        eyes = extract_eyes(lm, SIZE, SIZE, CLOSED, image=make_image())
+
+        self.assertLess(eyes["left"]["iris_ratio"], IRIS_HIDDEN_RATIO)
+        self.assertLess(eyes["left"]["openness"], LIDS_SHUT_OPENNESS)
+        self.assertTrue(eyes["left"]["closed"])
+        self.assertTrue(eyes["right"]["closed"])
+
+    # lids down to where a wink's are, but the iris is there: still open, the lid rule is only for shut lids
+    def test_lids_partly_down_with_a_visible_iris_are_open(self):
+        lm = close_lids(face_with_outlines(), "left", gap=0.02)
+        eyes = extract_eyes(lm, SIZE, SIZE, OPEN, image=make_image())
+
+        self.assertGreater(eyes["left"]["openness"], LIDS_SHUT_OPENNESS)
+        self.assertFalse(eyes["left"]["closed"])
 
     # looking at the bottom of the screen: both lids come down as far as a wink's (0.25 in a recording) and cover part
     # of the iris, but both equally and with a low blink score. that's open eyes looking down, not closed eyes

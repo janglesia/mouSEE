@@ -83,16 +83,17 @@ public static class AccuracyTest
     };
 
     /// <summary>
-    /// 5 columns by 3 rows sitting normally, more columns than the calibration has, so in between points get tested too.
-    /// Then left, middle and right while leaning each way, and top, middle and bottom with the head tilted up and down
-    /// (how far is guided, HeadPose.Guide). Snake order, so the dot never jumps back across the screen.
+    /// 5 columns by 4 rows sitting normally, further out than the grid's columns and between its rows, so in between
+    /// points get tested too. 4 rows because these are also the fine-tune's dots, and with 3 its up/down curves had too
+    /// little to go on. Then left, middle and right while leaning each way, and top, middle and bottom with the head
+    /// tilted up and down (how far is guided, HeadPose.Guide). Snake order, so the dot never jumps back across the screen.
     /// </summary>
     public static IReadOnlyList<TestPoint> Points { get; } = BuildPoints();
 
     private static List<TestPoint> BuildPoints()
     {
         double[] xs = [0.05, 0.275, 0.5, 0.725, 0.95];
-        double[] ys = [0.15, 0.5, 0.85];
+        double[] ys = [0.15, 0.38, 0.62, 0.85];
         var list = new List<TestPoint>();
         for (int r = 0; r < ys.Length; r++)
             for (int c = 0; c < xs.Length; c++)

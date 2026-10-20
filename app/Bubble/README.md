@@ -7,7 +7,7 @@ Where the bubble goes, every frame: the tracker's point, then the fine-tune, the
 | | |
 |---|---|
 | `Recenter.cs`, `RecenterWindow.xaml(.cs)` | re-center: look at a dot in the middle for a moment, the shift is taken off every bubble position. Every start, or Ctrl+Alt+R |
-| `FineTune.cs`, `FineTuneWindow.xaml(.cs)` | fine-tune: 20 dots, then a last correction on the bubble, kept with the calibration. Ctrl+Alt+F |
+| `FineTune.cs` | fine-tune: from the accuracy test's dots (its window is `app/Calibration/Accuracy/AccuracyTestWindow`), a last correction on the bubble, kept with the calibration. Ctrl+Alt+F |
 | `PositionGuide.cs` | the where-to-sit hints on the overlay ("Move a little to your left", "Tilt your head up a little") |
 | `HeadPosition.cs` | where the head is: face position, size and tilt |
 | [HeadModes/](HeadModes/) | what moving your head does: nothing (Eyes only), or pushing the bubble once it holds (Eyes + head nudge) |

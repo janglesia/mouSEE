@@ -63,6 +63,14 @@ IRIS_HIDDEN_RATIO = 0.65
 # per-person value, the eye check wizard tunes it. see docs/calibration/EYE-CALIBRATION.md
 LIDS_OPEN_OPENNESS = 0.26
 
+# Lids this close together (openness) mean the eye is closed, whatever the iris check says. With both eyes shut the iris
+# ratio can stay low (0.51-0.62 in a recording, the lashes and the shadow under the lid are dark), so the iris check
+# missed them, but the lids were nearly shut (0.04). Open eyes stay above 0.24 even looking at the bottom of the screen,
+# and a winked eye at 0.16-0.24, so a wink still needs the iris check. At most LOOKING_DOWN_MIN_OPENNESS, so the
+# looking down rule below never undoes it.
+# per-person value, the eye check tunes it. see docs/calibration/EYE-CALIBRATION.md
+LIDS_SHUT_OPENNESS = 0.1
+
 # Looking down (at the bottom of the screen) brings both lids down about as far as a wink's closed lid, and the lid
 # covers part of the iris, so both eyes read as closed and the bubble had nothing to go on there. But a wink is one
 # eye, and looking down is both equally. In a recording the two lids were within 16% of each other looking anywhere
@@ -343,8 +351,10 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
             elif iris_visibility is not None:
                 # the image shows directly whether the iris is there, more reliable than the blink
                 # score (which tilting the head throws off). but not when the lids are clearly apart,
-                # then the "missing" iris is a reflection on glasses, see LIDS_OPEN_OPENNESS
-                closed = iris_visibility > IRIS_HIDDEN_RATIO and openness < LIDS_OPEN_OPENNESS
+                # then the "missing" iris is a reflection on glasses, see LIDS_OPEN_OPENNESS. and lids that are
+                # shut are closed even when the iris spot isn't bright, see LIDS_SHUT_OPENNESS
+                closed = ((iris_visibility > IRIS_HIDDEN_RATIO and openness < LIDS_OPEN_OPENNESS)
+                          or openness < LIDS_SHUT_OPENNESS)
 
             out[name] = {
                 "outline": (lm[list(e["outline"])].round(4).tolist()),

@@ -33,8 +33,6 @@ public partial class GridWindow
         _backendCompletedTargets = null;
         _backendTotalTargets = null;
         _backendStatus = null;
-        _validation = null;
-        _validationPending = false;
         _calibrationRatios.Clear();
         _allTotal = 0;
         _allReady = 0;
@@ -64,7 +62,7 @@ public partial class GridWindow
             try
             {
                 string? pose = null;
-                int index = Targets.Length + ValidationTargets.Length;
+                int index = HeadStepFirstIndex;
                 foreach (var (p, x, y) in HeadPose.Step)
                 {
                     if (p != pose)
@@ -91,18 +89,6 @@ public partial class GridWindow
             _ = _speaker.SayAsync("Done. Sit normally again.", CancellationToken.None);
 
             CalibrationCompleted?.Invoke(); // the backend can fit the mapping now
-
-            if (RunValidation)
-            {
-                _validationPending = true;
-                for (int j = 0; j < ValidationTargets.Length; j++)
-                {
-                    var (x, y) = ValidationTargets[j];
-                    ProgressText.Text = $"Accuracy check {j + 1} of {ValidationTargets.Length}";
-                    await RunTargetAsync(new CalibrationTarget(Targets.Length + j, x, y, IsValidation: true), snap: false, ct);
-                }
-                ValidationCompleted?.Invoke();
-            }
         }
         catch (OperationCanceledException)
         {
@@ -157,7 +143,7 @@ public partial class GridWindow
                 // say what to do once, for when the screen is hard to read with the head tilted
                 if (!hinted && now >= PoseHintAfterMs)
                 {
-                    _speaker.SayNow(PoseHintText.Text);
+                    _speaker.SayNow(HeadPose.Spoken(PoseHintText.Text));
                     hinted = true;
                 }
             }

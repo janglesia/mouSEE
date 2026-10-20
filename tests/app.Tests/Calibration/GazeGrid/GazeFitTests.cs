@@ -243,6 +243,26 @@ public class GazeFitTests
     }
 
     [Fact]
+    public void Fine_tune_dots_are_fitted_with_the_grid()
+    {
+        // the fine-tune's dots are more targets sitting normally, they count like the grid's
+        var grid = Targets(Real);
+        var dots = grid.Select(t => t with { Index = FineTune.FirstIndex + t.Index, FineTune = true }).ToList();
+        var report = GazeFit.FitX(grid.Concat(dots).ToList(), 2560)!.Value.Report;
+        Assert.Equal(grid.Count + dots.Count, report.Targets.Count);
+    }
+
+    [Fact]
+    public void Fine_tune_flag_is_kept_from_the_recording()
+    {
+        var frames = new List<FrameSample> { new(0, true, 0, 0, null, null, 30) };
+        var recorded = new TargetRecording(FineTune.FirstIndex, 0.08, 0.1, false, frames, FineTune: true);
+        Assert.True(recorded.Target.FineTune);
+        Assert.True(GazeTargetSummary.Of(recorded.Target, frames).FineTune);
+        Assert.False(GazeTargetSummary.Of(new CalibrationTarget(0, 0.5, 0.5), frames).FineTune);
+    }
+
+    [Fact]
     public void Without_vertical_drops_only_the_vertical_offsets()
     {
         var t = VerticalTargets(RealVertical)[0] with { LeftH = At(-0.2), RightH = At(0.1) };

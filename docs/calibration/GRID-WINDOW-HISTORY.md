@@ -48,3 +48,9 @@ dotnet run --project app -- --calibration-preview
 ### 10/19/2026 (later)
 * **20-point grid:** the 9 points (3 by 3, 8% from the edges) are now 20 (5 columns by 4 rows, 7% from the edges). With 3 rows the fit couldn't see the curves in up/down, now it can fit them (`y_arc`, `y_openness_sq`). See [GAZE-FIT.md](GAZE-FIT.md#the-grid).
 * **No fine-tune after accepting any more:** the grid fits the curves itself, the fine-tune is still in the calibrations window (Ctrl+Alt+F) for a later day.
+
+### 10/20/2026
+* **Grid first, then the eye check:** a new calibration starts with the grid. The eye check comes after it and takes its open eyes and resting head angle from the grid, so its own "sit still" and "follow the dot" steps are gone. See [EYE-CALIBRATION.md](EYE-CALIBRATION.md#the-order-grid-first).
+* **Head step with 16 dots:** 4 per position, near the corners, instead of 2 (leaning only on the middle row, tilting only in the middle column). See [GAZE-FIT.md](GAZE-FIT.md#moving-your-head-the-head-step).
+* **Accuracy check removed:** the 4 extra targets behind the "Run accuracy check" setting were never measured, the result screen always said "Not measured". The setting, the targets and the accuracy tile are gone, the accuracy test does this. See [GRID-POINTS.md](GRID-POINTS.md#2-validation-targets-removed).
+* **Accuracy test and fine-tune in one:** the fine-tune isn't its own run any more, it's worked out from the accuracy test's dots (now 20 sitting normally, 5 by 4, plus the 12 leaning and tilting). Nothing is said out loud on the results. See [ACCURACY-TEST.md](ACCURACY-TEST.md).

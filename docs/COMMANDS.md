@@ -80,13 +80,12 @@ dotnet run -- --preview
 # Use a second camera
 dotnet run -- --preview --camera 1
 
-# Start a new calibration straight away (eye check, then the grid screen)
+# Start a new calibration straight away (the grid screen, then the eye check)
 dotnet run -- --calibrate
 
-# Open the accuracy test (where the bubble lands for dots all over the screen)
+# Open the accuracy test and fine-tune (where the bubble lands for dots all over the screen, then the last adjustments)
 dotnet run -- --accuracy-test
-
-# Open the fine-tune (last adjustments to the calibration in use)
+# --fine-tune opens the same
 dotnet run -- --fine-tune
 
 # Open only the grid calibration screen instead of the overlay

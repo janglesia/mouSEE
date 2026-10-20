@@ -22,4 +22,15 @@ public class HeadPoseGuideTests
         Assert.Equal(inRange, ok);
         Assert.StartsWith(hint, text);
     }
+
+    [Fact]
+    public void Says_how_far_it_is_now()
+    {
+        Assert.Equal("Tilt your head a little more up (3° of 6°)", HeadPose.Guide(HeadPose.HeadUp, 0, -3).Hint);
+        Assert.Equal("Good, hold it there (9°)", HeadPose.Guide(HeadPose.HeadUp, 0, -9).Hint);
+        Assert.Equal("Lean a little more to the left (3% of 7%)", HeadPose.Guide(HeadPose.LeanLeft, -0.03, 0).Hint);
+        Assert.Equal("A little less, not so far (25%, at most 16%)", HeadPose.Guide(HeadPose.LeanLeft, -0.25, 0).Hint);
+        // out loud without the numbers
+        Assert.Equal("Tilt your head a little more up", HeadPose.Spoken(HeadPose.Guide(HeadPose.HeadUp, 0, -3).Hint));
+    }
 }

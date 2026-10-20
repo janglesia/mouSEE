@@ -2,7 +2,7 @@
 
 How mouSEE keeps calibrations, picks which one to use, and what's in the files.
 
-A calibration has two parts. The **eye check** comes first: how your eyes look open and closed, and how you hold your head (see [EYE-CALIBRATION.md](EYE-CALIBRATION.md)). That part works and its values are used by the tracker. Then the **grid screen**, for where on the screen you look: 20 points (5 columns by 4 rows), then the head step. The gaze numbers are fitted to them, see [How the gaze is fitted](GAZE-FIT.md).
+A calibration has two parts. The **grid screen** comes first, for where on the screen you look: 20 points (5 columns by 4 rows), then the head step. The gaze numbers are fitted to them, see [How the gaze is fitted](GAZE-FIT.md). Then the **eye check**: when your eyes count as closed, using the grid's open eyes and head angle (see [EYE-CALIBRATION.md](EYE-CALIBRATION.md)).
 
 ## How it works
 
@@ -13,9 +13,9 @@ A calibration has two parts. The **eye check** comes first: how your eyes look o
 
 ## On startup
 
-If there are no saved calibrations, mouSEE asks if you want to calibrate, out loud too. You don't need your hands to answer: **look to the right** and hold it for 3 seconds for yes, **to the left** for no. A bar fills up on that side while you hold it. The buttons work as well. See [Answering by looking](../LOOK-TO-ANSWER.md).
+If there are no saved calibrations, mouSEE asks if you want to calibrate (on screen only, the voice is just for the calibration itself). You don't need your hands to answer: **look to the right** and hold it for 3 seconds for yes, **to the left** for no. A bar fills up on that side while you hold it. The buttons work as well. See [Answering by looking](../LOOK-TO-ANSWER.md).
 
-- **Calibrate now** (or look right) starts a calibration: the eye check, then the grid screen. It's saved and used as soon as the eye check is done, the grid screen adds to it.
+- **Calibrate now** (or look right) starts a calibration: the grid screen, then the eye check. It's saved and used as soon as the grid is kept, the eye check adds to it.
 - **Use default values** (or look left) closes the question. It asks again next time.
 - Untick **Ask me to calibrate when mouSEE starts without a calibration** to stop the question. That's the `calibration.askWhenMissing` setting (see [SETTINGS.md](../SETTINGS.md)), turn it back on there or tick the box again in the calibrations window.
 
@@ -28,15 +28,14 @@ Open it with **Ctrl+Alt+C** (from any program) or **c** in the camera window.
 - the list shows every saved calibration, newest used first, with when it was made. The one in use says IN USE
 - **Use this one** (or double-click) switches to the selected one
 - **Delete** deletes the selected one, after asking
-- **Test accuracy** opens the accuracy test with the calibration in use, see [Testing accuracy](ACCURACY-TEST.md)
-- **Fine-tune** makes the last adjustments to the calibration in use, see [Fine-tuning](../bubble/FINE-TUNE.md)
+- **Test and fine-tune** tests how accurate the calibration in use is, and fine-tunes it from the same dots if you want, see [Testing accuracy and fine-tuning](ACCURACY-TEST.md)
 - **What your head does** picks one of the three head modes: Eyes only, Eyes + head nudge, or Eyes + head nudge without the head correction. See [HEAD-MODES.md](../bubble/HEAD-MODES.md)
-- **New calibration** starts a new one (eye check, then the grid screen), it's saved and used once the eye check is done
+- **New calibration** starts a new one (the grid screen, then the eye check), it's saved and used once the grid is kept
 - if a calibration was made on a screen with a different size, it says so. It still works but won't line up
 
 Switching restarts the tracker with the new calibration, which takes a few seconds (the status bar says "Starting camera...").
 
-`make run ARGS="--calibrate"` starts a new calibration straight away. `make run ARGS="--calibration-preview"` opens only the grid screen, without the overlay. Accepting there saves a calibration with no eye values.
+`make run ARGS="--calibrate"` starts a new calibration straight away. `make run ARGS="--calibration-preview"` opens only the grid screen, without the overlay and without the eye check after it. Keeping it there saves a calibration with no eye values.
 
 ## The files
 
@@ -53,10 +52,11 @@ The defaults are the values built into the tracker (`eye_extractor.py`, `trackin
 
 | Value | Default | What it decides |
 |-------|---------|-----------------|
-| `IRIS_HIDDEN_RATIO` | 0.65 | an eye counts as closed when its iris looks hidden (iris ratio above this) |
-| `LIDS_OPEN_OPENNESS` | 0.26 | lids at least this far apart always count as open (stops reflections on glasses looking like closed eyes) |
-| `REST_PITCH`, `REST_YAW` | 0°, 0° | your head angle when sitting normally, head turns are measured from here |
-| `MAX_PITCH`, `MAX_YAW` | 30°, 35° | turning your head further than this from resting counts as turned away |
+| `LIDS_SHUT_OPENNESS` | 0.1 | lids closer together than this count as closed, whatever the iris check says. What the eye check tunes |
+| `IRIS_HIDDEN_RATIO` | 0.65 | an eye counts as closed when its iris looks hidden (iris ratio above this). Catches winks. Only older eye checks tuned it |
+| `LIDS_OPEN_OPENNESS` | 0.26 | lids at least this far apart always count as open (stops reflections on glasses looking like closed eyes). Only older eye checks tuned it |
+| `REST_PITCH`, `REST_YAW` | 0°, 0° | your head angle when sitting normally, head turns are measured from here. From the grid |
+| `MAX_PITCH`, `MAX_YAW` | 30°, 35° | turning your head further than this from resting counts as turned away. Older eye checks saved them, they're not tuned any more |
 | `COVERED_CONTRAST` | 0.15 | an eye counts as covered when there's almost no contrast in it. Never tuned, it would need a hand over the eye |
 | gaze (`k_h`, `center_x`...) | see [GEOMETRIC-GAZE-ESTIMATION.md](GEOMETRIC-GAZE-ESTIMATION.md) | where on the screen you're looking. Fitted to the grid targets: left/right, leaning and up/down |
 
@@ -74,45 +74,34 @@ Shortened, the real one has every value, step and target:
   "screenHeight": 1440,
   "gaze": {},
   "eyes": {
-    "LIDS_OPEN_OPENNESS": 0.271,
-    "REST_PITCH": -12.2,
-    "REST_YAW": 2,
-    "MAX_PITCH": 30,
-    "MAX_YAW": 35
+    "LIDS_SHUT_OPENNESS": 0.15,
+    "REST_PITCH": -13.6,
+    "REST_YAW": 2.4
   },
   "eyeCheck": {
     "madeAt": "2026-10-18T14:05:30-04:00",
     "values": [
       {
-        "name": "MAX_YAW",
-        "label": "Head turn limit, left/right",
-        "used": 35,
-        "default": 35,
-        "tuned": false,
-        "measured": { "turnedFurthest": 18.2, "margin": 10, "needed": 28.2 },
-        "explanation": "35°, the default. Turning your head further than this from resting counts as turned away, and the cursor stops. Following the dot to the corners your head moved up to 18.2° left/right. The limit has to be at least that plus 10° (28.2°), so the default already covers it."
-      },
-      {
-        "name": "IRIS_HIDDEN_RATIO",
-        "label": "Closed eye, iris check",
-        "used": 0.65,
-        "default": 0.65,
-        "tuned": false,
-        "measured": { "openHighest": 0.5, "closedLowest": 0.56, "gap": 0.06, "gapNeeded": 0.1, "openSamples": 412, "closedSamples": 590 },
-        "explanation": "0.65, the default. An eye counts as closed when ... Your open eyes measured up to 0.50 and your closed eyes from 0.56, only 0.06 apart. At least 0.10 is needed ..."
+        "name": "LIDS_SHUT_OPENNESS",
+        "label": "Closed eyes, lid check",
+        "used": 0.15,
+        "default": 0.1,
+        "tuned": true,
+        "measured": { "openLowest": 0.248, "closedHighest": 0.047, "gap": 0.201, "gapNeeded": 0.05, "openSamples": 2900, "closedSamples": 520 },
+        "explanation": "0.150 instead of the default 0.1. Lids closer together than this ... count as closed. Your open eyes measured at least 0.25 and your closed eyes at most 0.05, this is halfway between, but at most 0.15 ..."
       }
     ],
     "steps": [
       {
-        "step": "LookAround",
-        "instruction": "Keep both eyes open and follow the dot with your eyes.",
+        "step": "CloseBoth",
+        "instruction": "Close both eyes until you hear the sound.",
         "tries": 1,
         "passed": true,
-        "frames": 204,
+        "frames": 85,
         "faceShare": 1,
         "left": {
-          "irisRatio": { "p1": 0.29, "p5": 0.31, "median": 0.38, "p95": 0.47, "p99": 0.5 },
-          "openness": { "p1": 0.29, "p5": 0.3, "median": 0.34, "p95": 0.37, "p99": 0.38 },
+          "irisRatio": { "p1": 0.51, "p5": 0.53, "median": 0.62, "p95": 0.76, "p99": 0.82 },
+          "openness": { "p1": 0.035, "p5": 0.036, "median": 0.043, "p95": 0.045, "p99": 0.046 },
           "blink": {},
           "contrast": {},
           "widthPx": 58.5,
@@ -129,7 +118,7 @@ Shortened, the real one has every value, step and target:
         "captureFps": 30
       }
     ],
-    "check": { "passed": true, "scores": { "left eye closed": 0.96, "right eye closed": 0.94, "both eyes open": 0.99 }, "needed": 0.9 },
+    "check": { "passed": true, "scores": { "both eyes closed": 0.96, "both eyes open": 0.99 }, "needed": 0.9 },
     "warnings": [],
     "decision": "Used the values above."
   },
@@ -160,10 +149,10 @@ Shortened, the real one has every value, step and target:
 | `eyeCheck.steps` | what each step measured, from the frames after the 1.2 s reaction time of its last try: tries, pass or the `problem`, how often the face and each eye were found, and per eye the spread (1st, 5th, median, 95th, 99th percentile) of `irisRatio`, `openness` (lid gap / eye width), `blink`, `contrast` and the iris position (`offsetH`, `offsetV`), plus head `pitch`, `yaw`, `roll` and the camera's fps |
 | `eyeCheck.check` | the check round: the share of frames the tracker got right per instruction, and if it passed (90% needed) |
 | `eyeCheck.warnings` | the eyes are small in the image, the camera is slow, a step was left out... |
-| `eyeCheck.decision` | what was done with it: used, or the closed eye values kept at their defaults |
-| `gazeTargets` | the grid screen: per target where it was (0-1), whether it was the lean target (`moveHead`), the head step's position (`pose`: lean-left, lean-right, head-up, head-down), where the face was in the camera image (`faceX`, `faceY`, `faceW`), the lid openness and vertical iris offset (`openness`, `offsetV`, both eyes averaged), how many frames, how many were usable (face found, both eyes open and not covered) and the spread of each eye's iris position (`leftH`, `leftV`, `rightH`, `rightV`) and of the head angle. This is what the gaze numbers get fitted to |
+| `eyeCheck.decision` | what was done with it: used, or the closed eye value kept at its default |
+| `gazeTargets` | the grid screen: per target where it was (0-1), whether it was the lean target (`moveHead`), the head step's position (`pose`: lean-left, lean-right, head-up, head-down), whether it's one of the fine-tune's dots (`fineTune`, numbered from 100), where the face was in the camera image (`faceX`, `faceY`, `faceW`), the lid openness and vertical iris offset (`openness`, `offsetV`, both eyes averaged), how many frames, how many were usable (face found, both eyes open and not covered) and the spread of each eye's iris position (`leftH`, `leftV`, `rightH`, `rightV`) and of the head angle. This is what the gaze numbers get fitted to |
 | `fineTune` | the fine-tune's correction on the bubble, null without one: `x0`, `x1`, `x2`, `y0`, `y1`, `y2` and the curves `xuv`, `xuu`, `xvv`, `yuv`, `yuu`, `yvv` (see [Fine-tuning](../bubble/FINE-TUNE.md)) |
-| `fineTuneReport` | what the fine-tune found: when (`madeAt`), how many dots had a bubble (`points`), how far off the bubble was without and with it (`errorXBefore`, `errorXAfter`, `errorYBefore`, `errorYAfter`, as a share of the screen, the "with" on dots it wasn't fitted on), which directions it corrects (`correctsX`, `correctsY`) and with which shape (`shapeX`, `shapeY`), an `explanation`, and every dot with where the bubble landed (`dots`) |
+| `fineTuneReport` | what the fine-tune found: when (`madeAt`), how many dots had a bubble (`points`), whether the gaze numbers were fitted again with its dots (`refitted`) and how far off the bubble was on them before that (`errorXOldFit`, `errorYOldFit`), how far off it was without and with the correction (`errorXBefore`, `errorXAfter`, `errorYBefore`, `errorYAfter`, as a share of the screen, the "with" on dots it wasn't fitted on), which directions it corrects (`correctsX`, `correctsY`) and with which shape (`shapeX`, `shapeY`), an `explanation`, and every dot with where the bubble landed (`dots`) |
 | `gazeFit` | how the left/right gaze numbers were fitted to `gazeTargets`: the numbers, the looking down squeeze (`xSqueeze`, `opennessRef`), how far off each target still is (`targets`, as a share of the screen width), the average and worst error, the error on targets it wasn't fitted on (`leaveOneOutError`), what the default numbers got (`defaultMeanError`), and an `explanation`. Up/down: `yFitted`, `yConst`, `yOpenness`, `yIris`, the errors (`yMeanError`, `yMaxError`, `yLeaveOneOutError`, `yDefaultMeanError`, as a share of the screen height), `yTargets` and `yExplanation`. `version`: which version of the fit made it. And the head step: `headFitted`, `headXGain`, `headXShrink`, `headYPitch`, `headYLean`, `headXRef`, `pitchRef`, the up/down error on its dots without and with (`headYErrorBefore`, `headYErrorAfter`), `headTargets`, how far the face moved while leaning (`leanRange`), the error while leaning without and with it (`leanErrorBefore`, `leanErrorAfter`) and `headExplanation` |
 
 The `gaze` names are `k_h`, `k_v`, `left_h_baseline`, `left_v_baseline`, `right_h_baseline`, `right_v_baseline`, `center_x`, `center_y`, `gain_x`, `gain_y`. What they mean is in [GEOMETRIC-GAZE-ESTIMATION.md](GEOMETRIC-GAZE-ESTIMATION.md).
@@ -177,16 +166,18 @@ A file that isn't valid JSON is skipped (the others still load) and left where i
 ```json
 {
   "version": 2,
-  "eyeCheck": [ { "step": "CloseLeft", "try": 1, "passed": false, "problem": "Close your left eye all the way.", "frames": [] } ],
+  "eyeCheck": [ { "step": "CloseBoth", "try": 1, "passed": false, "problem": "Keep both eyes closed until you hear the sound.", "frames": [] } ],
   "checkRound": [ { "trial": "OpenBoth", "frames": [] } ],
-  "gaze": [ { "index": 0, "x": 0.08, "y": 0.08, "isValidation": false, "frames": [] } ]
+  "gaze": [ { "index": 0, "x": 0.07, "y": 0.07, "isValidation": false, "moveHead": false, "pose": null, "fineTune": false, "frames": [] } ]
 }
 ```
 
 - `version`: 2 since `offsetV` is measured from the eye corners, 1 before that, when it was from the middle of the lids. Version 1 recordings are fitted with up/down from the lids only, see [GAZE-FIT.md](GAZE-FIT.md#up-and-down)
 - `eyeCheck`: every try of every step, failed ones too, including the reaction time at the start
 - `checkRound`: each instruction of the check round
-- `gaze`: each grid target, the frames while its ring filled
+- `gaze`: each grid target, the frames while its ring filled, and the head step's. A kept fine-tune adds its dots here (`fineTune: true`), replacing an earlier one's
+
+Older recordings have the eye check's old steps (`Rest`, `LookAround`, the winks) and check round (`CloseLeft`, `CloseRight`). The step names are plain text, they still load.
 
 One frame:
 
@@ -222,7 +213,7 @@ make tracker ARGS="--calibration ../app/Calibration/Saved/2026-10-18_14-05-30.js
 | `app/Stats.cs` | `Spread` (how a number was spread over a recording) and the percentiles |
 | `app/Calibration/Saving/CalibrationStore.cs` | the saved calibrations: list, add, use, update, rename, delete, and their recordings (`SaveRecording`, `LoadRecording`) |
 | `app/Calibration/Saving/CalibrationListWindow.xaml(.cs)` | the calibrations window, also the startup question |
-| `app/App.xaml.cs` | asks on startup, `StartCalibration()` (eye check then the grid screen, saves what both measured), restarts the tracker when the one in use changes |
+| `app/App.xaml.cs` | asks on startup, `StartCalibration()` (the grid screen then the eye check, saves what both measured), `FitWithFineTune()` / `SaveFineTune()`, restarts the tracker when the one in use changes |
 | `app/LookToAnswer/LookChoice.cs`, `app/LookToAnswer/ChoicePrompt.xaml(.cs)` | answering yes / no by looking right / left |
 | `app/AppPaths.cs` | where the folder is |
 | `tracker/face_tracker.py` | `load_calibration()`, `apply_eye_thresholds()` |

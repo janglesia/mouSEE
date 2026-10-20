@@ -24,7 +24,7 @@ public class SummaryTests
 
         var report = StepReport.Of(step, 2, StepCheck.Fail("too few"), frames);
 
-        Assert.Equal("Rest", report.Step);
+        Assert.Equal("CloseBoth", report.Step);
         Assert.Equal(2, report.Tries);
         Assert.False(report.Passed);
         Assert.Equal("too few", report.Problem);

@@ -12,7 +12,9 @@ public class AccuracyTestTests
     public void Points_are_five_columns_then_leaning_both_ways()
     {
         var points = AccuracyTest.Points;
-        Assert.Equal(15 + 3 + 3 + 3 + 3, points.Count);
+        Assert.Equal(20 + 3 + 3 + 3 + 3, points.Count);
+        // 4 rows sitting normally, the fine-tune needs them for its up/down curves
+        Assert.Equal(4, points.Where(p => p.Phase == AccuracyTest.Normal).Select(p => p.Y).Distinct().Count());
         Assert.Equal(5, points.Where(p => p.Phase == AccuracyTest.Normal).Select(p => p.X).Distinct().Count());
         Assert.Equal(3, points.Count(p => p.Phase == AccuracyTest.LeanLeft));
         Assert.Equal(3, points.Count(p => p.Phase == AccuracyTest.LeanRight));

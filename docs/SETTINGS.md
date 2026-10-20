@@ -29,8 +29,8 @@ Command line options win over the file for that run, e.g. `make run ARGS="--came
 | c | camera window | the calibrations window |
 | Ctrl+Alt+R | anywhere | re-center: look at a dot in the middle for a moment, see [RE-CENTER.md](bubble/RE-CENTER.md) |
 | r | camera window | re-center |
-| Ctrl+Alt+F | anywhere | fine-tune: last adjustments with 20 dots, see [FINE-TUNE.md](bubble/FINE-TUNE.md) |
-| f | camera window | fine-tune |
+| Ctrl+Alt+F | anywhere | accuracy test and fine-tune: dots all over the screen, then the last adjustments, see [ACCURACY-TEST.md](calibration/ACCURACY-TEST.md) |
+| f | camera window | accuracy test and fine-tune |
 
 The Ctrl+Alt ones work from any program. Plain q, p, c and r only work while the camera window is focused, otherwise typing a q anywhere would quit mouSEE.
 
@@ -94,7 +94,6 @@ What moving your head does to the bubble, three ways to try against each other. 
 | Setting | Default | Allowed | When | Used | What it does |
 |---------|---------|---------|------|------|--------------|
 | `calibration.targetDwellMs` | `1200` | 500 to 5000 ms | next calibration | yes | How long each target is looked at (the ring filling up). Longer gives calibration more samples. |
-| `calibration.runAccuracyCheck` | `false` | `true` / `false` | next time the calibration window opens | yes | 4 extra targets after calibration to measure accuracy. Leave it off until something measures the error, otherwise you look at 4 targets for nothing. |
 | `calibration.askWhenMissing` | `true` | `true` / `false` | next start | yes | When there are no saved calibrations, asks on startup if you want to make one. Without one mouSEE uses default values. The "ask me" box in the calibrations window sets it. See [SAVED-CALIBRATIONS.md](calibration/SAVED-CALIBRATIONS.md). |
 | `calibration.recenterOnStart` | `true` | `true` / `false` | next start | yes | When mouSEE starts with a calibration, look at a dot in the middle for two seconds so the bubble fits how you're sitting today. Re-center any time with Ctrl+Alt+R or r in the camera window. See [RE-CENTER.md](bubble/RE-CENTER.md). |
 
@@ -119,7 +118,7 @@ Tuning, most people won't need to touch these.
   "tracking": { "paused": false },
   "head": { "mode": "cancel", "nudgeStrength": 1.5, "nudgeDeadZone": 1, "nudgeSettleMs": 600, "nudgeReleasePercent": 20 },
   "overlay": { "showStatusBar": true, "showDebugReadout": true, "positionHintPercent": 6, "tiltHintDegrees": 8 },
-  "calibration": { "targetDwellMs": 1200, "runAccuracyCheck": false, "askWhenMissing": true },
+  "calibration": { "targetDwellMs": 1200, "askWhenMissing": true },
   "advanced": { "lostAfterMs": 500, "recoverFrames": 10, "notRespondingAfterMs": 1000, "detectionConfidence": 0.5 }
 }
 ```

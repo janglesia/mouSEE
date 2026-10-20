@@ -7,10 +7,11 @@ using System.Windows.Media;
 
 namespace app.Calibration.EyeCheck;
 
-// Runs the eye check from docs/calibration/EYE-CALIBRATION.md. The steps, their checks and the math are next to it in
-// this folder (EyeCheckSteps, EyeCheckAnalysis, EyeCheckRound), this only runs them: says each
+// Runs the eye check from docs/calibration/EYE-CALIBRATION.md, after the grid. The steps, their checks and the math are
+// next to it in this folder (EyeCheckSteps, EyeCheckAnalysis, EyeCheckRound), this only runs them: says each
 // instruction, records the tracker's frames, gives hints, repeats steps that didn't work, and at the
-// end checks the new values with the tracker actually using them.
+// end checks the new value with the tracker actually using it. The open eyes and the resting head angle come from the
+// grid that ran just before.
 public partial class EyeCheckWindow : Window
 {
     private const int AttemptsPerStep = 3;
@@ -24,21 +25,32 @@ public partial class EyeCheckWindow : Window
     private static readonly Brush Green = Frozen(Color.FromRgb(0x6F, 0xCF, 0x97));
     private static readonly Brush Amber = Frozen(Color.FromRgb(0xE0, 0xA4, 0x58));
     private static readonly Brush Grey = Frozen(Color.FromRgb(0x6C, 0x81, 0x79));
-    // the grid screen's yellow. a bright screen reflects on glasses right over the iris, so the open eyes
-    // (step 1) and the check round are measured on it, like the grid screen and a white web page
+    // the grid screen's yellow. a bright screen reflects on glasses right over the iris, so the check round's open eyes
+    // are measured on it, like the grid screen and a white web page
     private static readonly Brush Bright = Frozen(Color.FromRgb(0xF7, 0xD0, 0x60));
     private static readonly Brush Dark = Frozen(Color.FromRgb(0x10, 0x10, 0x10));
     private static readonly Brush DarkText = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1C));
-    private static readonly Brush DotOnBright = Frozen(Color.FromRgb(0x29, 0x4A, 0x42));
     private static readonly Brush StepGrey = Frozen(Color.FromRgb(0x8A, 0x8A, 0x8A));
+    // the live line's colours on the yellow background, the green and amber don't read on it
+    private static readonly Brush GoodOnBright = Frozen(Color.FromRgb(0x1F, 0x5F, 0x4A));
+    private static readonly Brush OffOnBright = Frozen(Color.FromRgb(0x7A, 0x3B, 0x0E));
+    private bool _bright;
 
     private readonly App _app = (App)Application.Current;
+    // the grid's frames sitting normally: the open eyes, and the resting head angle the tilt steps compare against
+    private readonly IReadOnlyList<FrameSample> _open;
+    private readonly EyeCheckBaseline? _baseline;
     private readonly Speaker _speaker = new();
     private readonly Stopwatch _clock = new();
     private CancellationTokenSource? _cts;
     private bool _running;
 
     private List<FrameSample>? _recording;         // frames go here while a step records
+    // the last moment's frames, always, for the live tilt guidance (EyeCheckSteps.TiltGuide)
+    private readonly Queue<FrameSample> _recent = new();
+    private readonly Stopwatch _recentClock = Stopwatch.StartNew();
+    // the tilt steps: in range this long before recording starts, the hint said out loud after this, go on anyway after this
+    private const int TiltHoldMs = 800, TiltHintAfterMs = 3000, TiltTimeoutMs = 12000;
     private TaskCompletionSource? _trackerBack;    // waiting for the tracker after it restarted
     private bool _trackerHasCheckValues;           // the tracker is running with the values being checked
 
@@ -55,12 +67,15 @@ public partial class EyeCheckWindow : Window
     /// the report of what was measured, and the raw frames.</summary>
     public event Action<EyeThresholds, EyeCheckReport, CalibrationRecording>? Completed;
 
-    public EyeCheckWindow()
+    /// <summary>open: the frames of the grid that ran just before, sitting normally (App.StartEyeCheck).</summary>
+    public EyeCheckWindow(IReadOnlyList<FrameSample> open)
     {
         InitializeComponent();
+        _open = open;
+        _baseline = EyeCheckSteps.Baseline(open);
         Middle.Follow(Choice);
 
-        // the whole primary screen, so the dot's corners are the screen's corners
+        // the whole primary screen, so the middle dot is the screen's middle
         Left = 0;
         Top = 0;
         Width = SystemParameters.PrimaryScreenWidth;
@@ -73,7 +88,7 @@ public partial class EyeCheckWindow : Window
             Activate();
             Focus();
             AskIntro();
-            _ = _speaker.SayAsync("Eye check. To begin, look to the right and hold it for three seconds. To cancel, look to the left.",
+            _ = _speaker.SayAsync("Eye check, the last part. To begin, look to the right and hold it for three seconds. To skip it, look to the left.",
                                   CancellationToken.None);
             await _app.StartTrackerAsync(); // no-op if the overlay already started it
         };
@@ -97,6 +112,9 @@ public partial class EyeCheckWindow : Window
         if (msg.Type != "frame") return;
 
         _recording?.Add(FrameSample.From(msg, _clock.ElapsedMilliseconds));
+        long now = _recentClock.ElapsedMilliseconds;
+        _recent.Enqueue(FrameSample.From(msg, now));
+        while (now - _recent.Peek().Ms > HintWindowMs) _recent.Dequeue();
         if (msg.Faces is { Count: > 0 }) _trackerBack?.TrySetResult();
 
         if (IntroPanel.Visibility == Visibility.Visible)
@@ -155,7 +173,7 @@ public partial class EyeCheckWindow : Window
         var steps = EyeCheckSteps.All;
         int total = steps.Count + 1; // + the check round
         var recordings = new Dictionary<EyeCheckStepKind, IReadOnlyList<FrameSample>>();
-        EyeCheckBaseline? baseline = null;
+        var baseline = _baseline;
 
         for (int i = 0; i < steps.Count; i++)
         {
@@ -186,28 +204,15 @@ public partial class EyeCheckWindow : Window
             }
 
             _stepReports.Add(StepReport.Of(step, tries, check, usable));
-            if (check.Ok)
-            {
-                recordings[step.Kind] = usable;
-                baseline = UpdateBaseline(baseline, step, usable);
-            }
-            else if (step.Kind is EyeCheckStepKind.Rest or EyeCheckStepKind.LookAround)
-            {
-                // everything after compares against these two, no point going on
-                ShowStopped(check.Problem!);
-                return;
-            }
-            else
-            {
-                _problems.Add($"Left out \"{step.Say}\" after {AttemptsPerStep} tries: {check.Problem}");
-            }
+            if (check.Ok) recordings[step.Kind] = usable;
+            else _problems.Add($"Left out \"{step.Say}\" after {AttemptsPerStep} tries: {check.Problem}");
 
             await Task.Delay(PauseBetweenStepsMs, ct);
         }
 
-        _outcome = EyeCheckAnalysis.Analyze(recordings);
+        _outcome = EyeCheckAnalysis.Analyze(_open, recordings);
 
-        // step 7: only worth it if a closed eye value changed
+        // the check round: only worth it if the closed eye value changed
         if (_outcome.TunedDetection)
         {
             StepText.Text = $"Step {total} of {total}";
@@ -228,19 +233,27 @@ public partial class EyeCheckWindow : Window
     {
         InstructionText.Text = step.Say;
         HintText.Text = "";
+        SetLive(null);
         SetProgress(0);
-        bool dot = step.Kind == EyeCheckStepKind.LookAround;
-        SetBright(dot);
-        // the instruction moves up out of the dot's way
+        // the instruction moves up out of the middle dot's way
         Middle.Show(step, step.LooksAtMiddle);
         RunPanel.VerticalAlignment = step.LooksAtMiddle ? VerticalAlignment.Top : VerticalAlignment.Center;
         RunPanel.Margin = step.LooksAtMiddle ? new Thickness(0, 90, 0, 0) : new Thickness(0);
-        if (dot)
+        // the tilt steps show the head angle from the moment the instruction starts being read, then wait for the head,
+        // and only then say to close the eyes (the guidance can't be read with them closed)
+        var saying = _speaker.SayAsync(step.Say, ct);
+        while (step.IsTilt && !saying.IsCompleted)
         {
-            MoveDot(0);
-            DotLayer.Visibility = Visibility.Visible;
+            SetLive(Tilt(step, baseline));
+            await Task.Delay(50, ct);
         }
-        await _speaker.SayAsync(step.Say, ct);
+        await saying;
+        if (step.IsTilt) await WaitForTiltAsync(step, baseline, ct);
+        if (step.Close is not null)
+        {
+            InstructionText.Text = step.Close;
+            await _speaker.SayAsync(step.Close, ct);
+        }
 
         var frames = new List<FrameSample>();
         _clock.Restart();
@@ -252,19 +265,15 @@ public partial class EyeCheckWindow : Window
             {
                 long now = _clock.ElapsedMilliseconds;
                 SetProgress(now / (double)step.DurationMs);
-                if (dot) MoveDot(now / (double)step.DurationMs);
 
-                if (now >= HintAfterMs)
+                // green "Good" when it's right, what's wrong once there's been time to react
+                var status = EyeCheckSteps.LiveStatus(step, _recent.ToList(), baseline, problemsToo: now >= HintAfterMs);
+                SetLive(status);
+                // say one problem per try, more than that just talks over the person ("Good" isn't said)
+                if (status is { Good: false } problem && !hintSpoken)
                 {
-                    var recent = frames.Where(f => f.Ms >= now - HintWindowMs).ToList();
-                    string? hint = EyeCheckSteps.LiveHint(step, recent, baseline);
-                    HintText.Text = hint ?? "";
-                    // say one hint per try, more than that just talks over the person
-                    if (hint is not null && !hintSpoken)
-                    {
-                        _speaker.SayNow(hint);
-                        hintSpoken = true;
-                    }
+                    _speaker.SayNow(HeadPose.Spoken(problem.Text));
+                    hintSpoken = true;
                 }
                 await Task.Delay(50, ct);
             }
@@ -272,9 +281,8 @@ public partial class EyeCheckWindow : Window
         finally
         {
             _recording = null;
-            DotLayer.Visibility = Visibility.Collapsed;
+            SetLive(null);
             Middle.Show(step, false);
-            SetBright(false);
         }
 
         SetProgress(1);
@@ -282,40 +290,45 @@ public partial class EyeCheckWindow : Window
         return frames;
     }
 
-    private static EyeCheckBaseline? UpdateBaseline(EyeCheckBaseline? baseline, EyeCheckStep step, IReadOnlyList<FrameSample> usable)
+    // the tilt guidance as a live line, or "can't see your face"
+    private (bool, string)? Tilt(EyeCheckStep step, EyeCheckBaseline? baseline) =>
+        baseline is null ? null
+            : EyeCheckSteps.TiltGuide(step, _recent.ToList(), baseline) is { } g ? (g.InRange, g.Hint)
+            : (false, "I can't see your face. Move back in front of the camera.");
+
+    // live "a little more / a little less / good" until the head has been tilted far enough for a moment, then the step
+    // records (and the guidance stays up during it). goes on anyway without a resting angle, or after a while
+    private async Task WaitForTiltAsync(EyeCheckStep step, EyeCheckBaseline? baseline, CancellationToken ct)
     {
-        var face = usable.Where(f => f.FaceFound).ToList();
-        return step.Kind switch
+        if (baseline is null) return;
+        var clock = Stopwatch.StartNew();
+        long inSince = -1;
+        bool hinted = false;
+        while (clock.ElapsedMilliseconds < TiltTimeoutMs)
         {
-            EyeCheckStepKind.Rest => new EyeCheckBaseline(
-                EyeCheckSteps.Median(face, f => f.Pitch) ?? 0, EyeCheckSteps.Median(face, f => f.Yaw) ?? 0),
-            _ => baseline,
-        };
-    }
-
-    // the dot visits the corners and waits at each one, so the eyes (and head) get all the way there
-    private static readonly (double T, double X, double Y)[] DotPath =
-    [
-        (0.00, 0.5, 0.5),
-        (0.12, 0.06, 0.08), (0.27, 0.06, 0.08),
-        (0.37, 0.94, 0.08), (0.52, 0.94, 0.08),
-        (0.62, 0.94, 0.92), (0.77, 0.94, 0.92),
-        (0.87, 0.06, 0.92), (1.00, 0.06, 0.92),
-    ];
-
-    private void MoveDot(double t)
-    {
-        int i = 1;
-        while (i < DotPath.Length - 1 && DotPath[i].T < t) i++;
-        var (t0, x0, y0) = DotPath[i - 1];
-        var (t1, x1, y1) = DotPath[i];
-        double k = t1 > t0 ? Math.Clamp((t - t0) / (t1 - t0), 0, 1) : 1;
-        Canvas.SetLeft(Dot, (x0 + (x1 - x0) * k) * Root.ActualWidth - Dot.Width / 2);
-        Canvas.SetTop(Dot, (y0 + (y1 - y0) * k) * Root.ActualHeight - Dot.Height / 2);
+            long now = clock.ElapsedMilliseconds;
+            var guide = EyeCheckSteps.TiltGuide(step, _recent.ToList(), baseline);
+            SetLive(Tilt(step, baseline));
+            if (guide is { InRange: true })
+            {
+                if (inSince < 0) inSince = now;
+                if (now - inSince >= TiltHoldMs) return;
+            }
+            else
+            {
+                inSince = -1;
+                if (!hinted && now >= TiltHintAfterMs && guide is { } g)
+                {
+                    _speaker.SayNow(HeadPose.Spoken(g.Hint));
+                    hinted = true;
+                }
+            }
+            await Task.Delay(50, ct);
+        }
     }
 
     // =====================================================================
-    // Step 7: check the new values with the tracker using them
+    // The check round: the new value, with the tracker using it
     // =====================================================================
 
     private async Task<Dictionary<CheckTrial, double>?> RunCheckRoundAsync(EyeThresholds thresholds, CancellationToken ct)
@@ -341,9 +354,10 @@ public partial class EyeCheckWindow : Window
         for (int i = 0; i < order.Count; i++)
         {
             var trial = order[i];
-            string text = EyeCheckRound.Say(trial, i > 0 ? order[i - 1] : null);
+            string text = EyeCheckRound.Say(trial);
             InstructionText.Text = text;
             HintText.Text = $"Check {i + 1} of {order.Count}.  {EyeCheckRound.Eyes(trial)}";
+            SetLive(null);
             SetProgress(0);
             await _speaker.SayAsync(text, ct);
 
@@ -355,12 +369,14 @@ public partial class EyeCheckWindow : Window
                 while (_clock.ElapsedMilliseconds < EyeCheckRound.TrialMs)
                 {
                     SetProgress(_clock.ElapsedMilliseconds / (double)EyeCheckRound.TrialMs);
+                    SetLive(EyeCheckRound.LiveGood(trial, _recent.ToList()) is { } good ? (true, good) : null);
                     await Task.Delay(50, ct);
                 }
             }
             finally
             {
                 _recording = null;
+                SetLive(null);
             }
             Speaker.Ding();
             runs.Add((trial, EyeCheckSteps.Usable(frames)));
@@ -409,9 +425,9 @@ public partial class EyeCheckWindow : Window
         bool passed = _checkReport?.Passed ?? true;
         if (!passed)
         {
-            ResultTitle.Text = "The new values didn't work well enough";
-            ResultSubtitle.Text = "mouSEE couldn't reliably tell when your eyes are closed with them. " +
-                                  "Try again with more light on your face, or keep the default values.";
+            ResultTitle.Text = "The new value didn't work well enough";
+            ResultSubtitle.Text = "mouSEE couldn't reliably tell when your eyes are closed with it. " +
+                                  "Try again with more light on your face, or keep the default value.";
         }
         else if (!outcome.TunedDetection)
         {
@@ -422,8 +438,8 @@ public partial class EyeCheckWindow : Window
         {
             ResultTitle.Text = "Eye check done";
             ResultSubtitle.Text = checkRan
-                ? "Your values work. Continue to save them and go on to the gaze calibration."
-                : "Continue to save these values and go on to the gaze calibration.";
+                ? "Your value works. Continue to save it, that finishes the calibration."
+                : "Continue to save it, that finishes the calibration.";
         }
 
         NotesList.ItemsSource = lines;
@@ -431,26 +447,12 @@ public partial class EyeCheckWindow : Window
         DefaultsButton.Visibility = passed ? Visibility.Collapsed : Visibility.Visible;
         ShowPhase(ResultPanel);
         if (passed)
-            Ask("Continue: save these values and go on to the gaze calibration", "Do the eye check again",
+            Ask("Continue: save it and finish", "Do the eye check again",
                 yes => { if (yes) Continue(); else Start(); });
         else
-            Ask("Keep the default values for closed eyes and continue", "Do the eye check again",
+            Ask("Keep the default value for closed eyes and finish", "Do the eye check again",
                 yes => { if (yes) KeepDefaults(); else Start(); });
         _ = _speaker.SayAsync($"{ResultTitle.Text}. Look to the right to continue, or to the left to do it again.", CancellationToken.None);
-    }
-
-    private void ShowStopped(string problem)
-    {
-        _outcome = null;
-        ResultTitle.Text = "The eye check couldn't go on";
-        ResultSubtitle.Text = problem + " The first two steps are needed for everything after them.";
-        NotesList.ItemsSource = _problems.Prepend("Sit in front of the camera with your face well lit, then do it again.").ToList();
-        ContinueButton.Visibility = Visibility.Collapsed;
-        DefaultsButton.Visibility = Visibility.Visible;
-        ShowPhase(ResultPanel);
-        Ask("Continue with the default values", "Do the eye check again", yes => { if (yes) KeepDefaults(); else Start(); });
-        _ = _speaker.SayAsync($"{ResultTitle.Text}. Look to the right to continue with the default values, or to the left to do it again.",
-                              CancellationToken.None);
     }
 
     // everything measured so far. decision says what was done with it, e.g. that the defaults were kept
@@ -483,14 +485,14 @@ public partial class EyeCheckWindow : Window
         Close();
     }
 
-    // the check round only showed the closed eye values don't work, the head angle ones are still good
-    private static readonly string[] ClosedEyeValues = ["IRIS_HIDDEN_RATIO", "LIDS_OPEN_OPENNESS"];
+    // the check round only showed the closed eye value doesn't work, the head angle ones are still good
+    private const string ClosedEyeValue = "LIDS_SHUT_OPENNESS";
 
     private void KeepDefaults()
     {
-        var keep = (_outcome?.Thresholds ?? new EyeThresholds()) with { IrisHiddenRatio = null, LidsOpenOpenness = null };
-        // say in the report that these ended up at their defaults, and why
-        var values = (_outcome?.Values ?? []).Select(v => ClosedEyeValues.Contains(v.Name) && v.Tuned
+        var keep = (_outcome?.Thresholds ?? new EyeThresholds()) with { LidsShutOpenness = null };
+        // say in the report that it ended up at its default, and why
+        var values = (_outcome?.Values ?? []).Select(v => v.Name == ClosedEyeValue && v.Tuned
             ? v with
             {
                 Used = v.Default ?? v.Used,
@@ -500,7 +502,7 @@ public partial class EyeCheckWindow : Window
             : v).ToList();
         string decision = _outcome is null
             ? "The eye check stopped early, nothing was changed."
-            : "Kept the default values for closed eyes, the head angle values are used.";
+            : "Kept the default value for closed eyes, the head angle values are used.";
         Completed?.Invoke(keep, Report(decision, values), _raw);
         Close();
     }
@@ -512,7 +514,7 @@ public partial class EyeCheckWindow : Window
         Choice.Ask(yes, no);
     }
 
-    private void AskIntro() => Ask("Begin the eye check", "Cancel", yes => { if (yes) Start(); else Close(); });
+    private void AskIntro() => Ask("Begin the eye check", "Skip it", yes => { if (yes) Start(); else Close(); });
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -541,13 +543,20 @@ public partial class EyeCheckWindow : Window
         if (panel == RunPanel) Choice.Stop();
     }
 
+    // the live line: green when it's going right, amber for what's wrong, nothing for null
+    private void SetLive((bool Good, string Text)? status)
+    {
+        LiveText.Text = status?.Text ?? "";
+        LiveText.Foreground = status is { Good: true } ? (_bright ? GoodOnBright : Green) : (_bright ? OffOnBright : Amber);
+    }
+
     private void SetBright(bool bright)
     {
+        _bright = bright;
         Background = bright ? Bright : Dark;
         InstructionText.Foreground = bright ? DarkText : Brushes.White;
         StepText.Foreground = bright ? DarkText : StepGrey;
         HintText.Foreground = bright ? DarkText : Amber;
-        Dot.Fill = DotOnBright;
     }
 
     private void SetProgress(double fraction) =>

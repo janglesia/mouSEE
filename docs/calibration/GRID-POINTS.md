@@ -24,17 +24,13 @@ Snake order, so the target never jumps back across the screen: the first row lef
 11-15. third row, `(0.07, 0.6433)` to `(0.93, 0.6433)`
 16-20. bottom row, `(0.93, 0.93)` to `(0.07, 0.93)`
 
-After the grid comes the head step: 8 dots while leaning and tilting (`HeadPose.Step` in `app/Calibration/GazeGrid/CalibrationTarget.cs`).
+After the grid comes the head step: 16 dots while leaning and tilting, 4 near the corners for each position (`HeadPose.Step` in `app/Calibration/GazeGrid/CalibrationTarget.cs`).
 
 ---
 
-## 2. Validation Targets
+## 2. Validation Targets (removed)
 
-In addition to the primary calibration grid, 4 extra validation targets are evaluated in this sequence:
-- $(0.25, 0.25)$ (Top-Left quadrant)
-- $(0.75, 0.25)$ (Top-Right quadrant)
-- $(0.75, 0.75)$ (Bottom-Right quadrant)
-- $(0.25, 0.75)$ (Bottom-Left quadrant)
+There used to be 4 extra validation targets after the grid, at $(0.25, 0.25)$, $(0.75, 0.25)$, $(0.75, 0.75)$ and $(0.25, 0.75)$, behind the "Run accuracy check" setting. Nothing ever measured them, so they're gone. The accuracy test measures how accurate a calibration is, and the grid's preview shows it. Old recordings can still have them (numbers 20-23, `isValidation`), the fit leaves them out. The head step's dots are numbered from 24, as before.
 
 ---
 

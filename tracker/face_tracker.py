@@ -73,6 +73,7 @@ EYE_THRESHOLDS = {
     "IRIS_HIDDEN_RATIO": (eye_extractor_module, 0.3, 1.2),
     "COVERED_CONTRAST": (eye_extractor_module, 0.01, 0.5),
     "LIDS_OPEN_OPENNESS": (eye_extractor_module, 0.1, 0.6),
+    "LIDS_SHUT_OPENNESS": (eye_extractor_module, 0.03, 0.15),
     "REST_PITCH": (tracking_status_module, -60.0, 60.0),
     "REST_YAW": (tracking_status_module, -60.0, 60.0),
     "MAX_PITCH": (tracking_status_module, 10.0, 80.0),

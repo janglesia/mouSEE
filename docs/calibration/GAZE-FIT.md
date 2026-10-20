@@ -1,6 +1,10 @@
 # How the gaze is fitted
 
-When you press Accept on the grid screen, `App.StartGazeCalibration()` fits the left/right and up/down numbers to the targets and what moving your head does to the head step (`GazeFit.Fit`, app/Calibration/GazeGrid/GazeFit.cs) and saves them in `gaze`, with the report in `gazeFit`. The tracker restarts and the bubble uses them.
+When you choose **Try it out** on the grid screen's result, `App.StartGazeCalibration()` fits the left/right and up/down numbers to the targets and what moving your head does to the head step (`GazeFit.Fit`, app/Calibration/GazeGrid/GazeFit.cs) and saves them in `gaze`, with the report in `gazeFit`. The tracker restarts and the bubble uses them.
+
+### The preview
+
+Then comes the preview, like the fine-tune's: the 20 points stay up as rings, and a red dot shows live where the bubble lands with the new calibration (the tracker's point, no fine-tune or re-center yet). Look at the rings, then close your eyes for 2 seconds and look right to **keep it** or left to **do the grid again** (the buttons work too, and Esc keeps it). Doing it again puts back what was saved: the calibration as it was before the grid, or none if the grid made a new one (`GridWindow.Results.cs`, `CalibrationDiscarded` in `App.StartGazeCalibration`). This replaces running the fine-tune after the grid: the fine-tune's correction can't come from the 20 points themselves, the fit was made on them, so the bubble already lands as close to them as it can.
 
 It's the model in `estimate_gaze()` (tracker/gaze_model.py), so what the fit measures is what the bubble does: each eye's angle is `asin((h - baseline) / k_h)`, the two are averaged, and `x = center_x + gain_x * tan(angle)`.
 
@@ -8,7 +12,7 @@ It's the model in `estimate_gaze()` (tracker/gaze_model.py), so what the fit mea
 - **k_h**: tried from 0.5 to 3, keeping the one that's best on targets it wasn't fitted on. Bigger is more linear. Real eyes have fit better with a big one than with the default 0.7
 - **center_x, gain_x**: a straight line through `tan(angle)` against where the targets were
 
-Only the targets with at least 10 frames where both eyes were open count, and not the accuracy check ones. It needs at least 3 targets in at least 2 columns, otherwise the gaze stays at the defaults.
+Only the targets with at least 10 frames where both eyes were open count. Besides the grid's that's the [fine-tune's dots](#the-fine-tunes-dots), not the head step's (or the accuracy check targets some old recordings have). It needs at least 3 targets in at least 2 columns, otherwise the gaze stays at the defaults.
 
 The first real calibration: the default numbers put the left and right targets at -0.7 and 1.7 (way off the screen, the bubble was always further out than where you looked). Fitted, the targets land on average 3.5% of the screen width away (about 90 px on 2560), 10% at worst (bottom left, looking down changes how the eyes read), and about 4.6% on targets left out of the fit.
 
@@ -26,16 +30,18 @@ x = center_x + gain_x * tan(angle) + x_squeeze * tan(angle) * (lid openness - op
 
 The iris position only says where the eyes point in the head. Lean to the right and look at the same spot, and your eyes turn a little left to stay on it, so without a correction the bubble moves left. The accuracy tests showed leaning does more than shift it: it also shrinks left/right by about a quarter (the eyes move less for the same distance on the screen), and it moves up/down too. Tilting the head moves up/down as well.
 
-So after the grid targets comes the head step, 8 dots (`HeadPose.Step` in app/Calibration/GazeGrid/CalibrationTarget.cs). Each new position is said out loud and shown in big letters in the middle first, then guided live until the head is there: "Lean a little more to the left", "A little less, not so far", "Good, hold it there" (`HeadPose.Guide`). The dots start once it's been in range for 0.8 s, and the hint stays up while they run. If it doesn't get there within 12 s it goes on anyway, and the fit leaves out what didn't move enough.
+So after the grid targets comes the head step, 16 dots (`HeadPose.Step` in app/Calibration/GazeGrid/CalibrationTarget.cs). Each new position is said out loud and shown in big letters in the middle first, then guided live until the head is there, with how far it is now: "Tilt your head a little more up (3° of 6°)", "Lean a little more to the left (4% of 7%)", "A little less, not so far (14°, at most 12°)", and in green "Good, hold it there (9°)" (`HeadPose.Guide`). Tilting is in degrees, leaning in how far the middle of your face moved across the camera image. The guidance starts as the position is being read out, not after, and what's said out loud leaves the numbers out. The dots start once it's been in range for 0.8 s, and the hint stays up while they run. If it doesn't get there within 12 s it goes on anyway, and the fit leaves out what didn't move enough.
 
 How far is measured, not "a little": leaning means the middle of the face moves 7-16% of the camera image, tilting 6-12° of head pitch, both from how the head sat during the grid targets. That doesn't depend on the screen size, and it's about how much people move while using the computer. The first head step said "tilt your head up a little" and got 14° up and 20° down: on those dots the bubble was still up to 38% off, because the fit tried to match extremes nobody uses day to day.
 
 | How | Dots |
 |-----|------|
-| lean to the left and stay there | left and right edge, middle row |
-| lean to the right and stay there | right and left edge |
-| sit normally and tilt your head up a little | top and bottom, middle column |
-| tilt your head down a little | bottom and top |
+| lean to the left and stay there | near the 4 corners: left and right edge (12% in), at 20% and 80% of the height |
+| lean to the right and stay there | the same 4, the other way round |
+| sit normally and tilt your head up a little | near the 4 corners: top and bottom edge (12% in), at 20% and 80% of the width |
+| tilt your head down a little | the same 4, the other way round |
+
+It was 2 dots per position: leaning only on the middle row and tilting only in the middle column. Then the fit never saw what leaning does at the top or bottom of the screen, or what tilting does on the left or right, and 8 dots had to pin down 4 numbers. Moving even a little away from how you sat during the grid then threw the bubble off.
 
 For each dot the rest of the fit says where the bubble would land, and how far that is from the dot is what the head did. `GazeFit.FitHead` fits:
 
@@ -86,6 +92,10 @@ Each shape is fitted without one target and checked on it, for every target, and
 20 targets, 5 columns by 4 rows, 7% from the edges, in snake order (`GridWindow.BuildTargets`). It was 3 by 3 at 8% from the edges. Going further into the corners wouldn't have helped: on the 03:07 calibration left/right was within 1% at 7 of the 9 targets, and up/down was 3-12% off at the targets themselves, so the problem was the straight line, not how far out the targets were. More points in between let the fit see the curves. Very close to the edges would also cut off the logo, and at the bottom the lids cover more of the iris. Head pitch would fit sitting still slightly better but breaks when leaning (leaning changes it), so it's not used.
 
 On the first accuracy test this took the up/down error from 24% of the screen height (the defaults) to 11% sitting normally and 4% leaning left. Leaning right got worse (6% to 14%, the eyes open unevenly then), which the head step is about (see [Moving your head](#moving-your-head-the-head-step)). Staring at one point the bubble shakes about 2% of the height up and down, more than left/right (0.8%), since the lids are a small number made big.
+
+## The fine-tune's dots
+
+The [fine-tune](../bubble/FINE-TUNE.md) (run with the accuracy test) records 20 dots the same way as the grid (eyes on known points, sitting normally) and 12 while leaning and tilting like the head step, on a later day. They're added to the calibration's targets and the whole fit runs again: the sitting normally ones count like the grid's, the others like the head step's (`App.FitWithFineTune`), so the calibration gets 40 points with however you sat on both days, instead of the dots only feeding a correction on top. A newer fine-tune replaces the older one's dots. They're saved like the grid's: `fineTune: true` on the targets (`gazeTargets`, numbered from 100) and on their frames in the recording, so fitting again later keeps them.
 
 ## Fitting again
 

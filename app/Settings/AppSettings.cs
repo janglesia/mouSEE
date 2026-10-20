@@ -133,9 +133,6 @@ public sealed record CalibrationSettings
     [Setting("Time per target", "How long each calibration target is looked at. Longer gives calibration more samples.", Min = 500, Max = 5000, Step = 100, Unit = "ms")]
     public int TargetDwellMs { get; init; } = 1200;
 
-    [Setting("Run accuracy check", "Shows 4 extra targets after calibration to measure how accurate it is.")]
-    public bool RunAccuracyCheck { get; init; }
-
     [Setting("Ask to calibrate", "When there's no calibration yet, asks on startup if you want to make one. Without one mouSEE uses default values.")]
     public bool AskWhenMissing { get; init; } = true;
 

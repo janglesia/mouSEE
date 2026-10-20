@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:look="clr-namespace:app.LookToAnswer"
         xmlns:ui="clr-namespace:app.UI"
-        Title="mouSEE accuracy test"
+        Title="mouSEE accuracy test and fine-tune"
         WindowStyle="None"
         ResizeMode="NoResize"
         Topmost="True"
@@ -13,15 +13,18 @@
         FontFamily="Segoe UI"
         KeyDown="Window_KeyDown">
     <Grid x:Name="Root">
-        <!-- the point to look at, and at the end every point with a line to where the bubble landed -->
+        <!-- the point to look at, and at the end every point with a line to where the bubble landed, and the bubble live:
+             grey how it is now, yellow with the fine-tune -->
         <Canvas x:Name="Board" IsHitTestVisible="False">
             <Ellipse x:Name="Dot" Width="26" Height="26" Fill="#F7D060" Visibility="Collapsed" />
+            <Ellipse x:Name="BeforeBubble" Width="34" Height="34" Fill="#40FFFFFF" Stroke="#A0A0A0" StrokeThickness="1.5" Visibility="Collapsed" />
+            <Ellipse x:Name="AfterBubble" Width="34" Height="34" Fill="#55F7D060" Stroke="#F7D060" StrokeThickness="2" Visibility="Collapsed" />
         </Canvas>
 
         <StackPanel x:Name="IntroPanel" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="640">
-            <TextBlock Text="Accuracy test" Foreground="White" FontSize="34" FontWeight="SemiBold" />
+            <TextBlock Text="Accuracy test and fine-tune" Foreground="White" FontSize="34" FontWeight="SemiBold" />
             <TextBlock Foreground="#C0C0C0" FontSize="16" TextWrapping="Wrap" Margin="0,12,0,0"
-                       Text="Dots show up all over the screen. Look at each one until the next shows up. First sitting normally, then leaning left, then leaning right. It takes about a minute. The bubble is hidden so you don't follow it, at the end you see where it would have been." />
+                       Text="Dots show up all over the screen. Look at each one until the next shows up. First sitting normally, then leaning left and right, then with your head tilted up and down. It takes about a minute and a half. The bubble is hidden so you don't follow it. At the end you see where it would have been, and the calibration is adjusted to land on the dots: try it out, then keep it or not." />
             <TextBlock x:Name="CalibrationText" Foreground="#8A8A8A" FontSize="13" TextWrapping="Wrap" Margin="0,12,0,0" />
             <StackPanel Orientation="Horizontal" Margin="0,28,0,0">
                 <Button Content="Begin" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="BeginButton_Click" />
@@ -45,7 +48,8 @@
             <StackPanel>
                 <TextBlock Text="Where the bubble landed" Foreground="White" FontSize="22" FontWeight="SemiBold" />
                 <TextBlock Foreground="#A0A0A0" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,8"
-                           Text="Rings: the dots you looked at. Filled dots: where the bubble landed, joined by a line. Yellow sitting normally, blue leaning left, pink leaning right, green head tilted up, orange head tilted down." />
+                           Text="Rings: the dots you looked at. Filled dots: where the bubble landed, joined by a line. Yellow sitting normally, blue leaning left, pink leaning right, green head tilted up, orange head tilted down. The two bubbles follow your eyes: grey how it is now, yellow with the fine-tune." />
+                <TextBlock x:Name="FineTuneText" Foreground="#F7D060" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,8" />
                 <ItemsControl x:Name="SummaryList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -55,8 +59,9 @@
                 </ItemsControl>
                 <TextBlock x:Name="SavedText" Foreground="#8A8A8A" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button x:Name="KeepButton" Content="Keep the fine-tune" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="KeepButton_Click" />
                     <Button Content="Run it again" Style="{StaticResource DarkButton}" Margin="0,0,10,0" Click="BeginButton_Click" />
-                    <Button Content="Close" Style="{StaticResource PrimaryButton}" Click="CloseButton_Click" />
+                    <Button Content="Close" Style="{StaticResource DarkButton}" Click="CloseButton_Click" />
                 </StackPanel>
             </StackPanel>
         </Border>

@@ -1,70 +1,50 @@
 namespace app.Calibration.EyeCheck;
 
-public enum CheckTrial { CloseLeft, CloseRight, OpenBoth }
+public enum CheckTrial { CloseBoth, OpenBoth }
 
 /// <summary>
-/// Step 7, the last one of the eye check: a random mix of instructions, run with the new values loaded in the tracker,
-/// counting how often its closed decision matches what was asked. Under 90% for any of them
-/// means the values don't work for this person, see docs/calibration/EYE-CALIBRATION.md
+/// The last step of the eye check: closing both eyes and opening them, run with the new value loaded in the tracker,
+/// counting how often its closed decision matches what was asked. Under 90% for either means the value doesn't work for
+/// this person, see docs/calibration/EYE-CALIBRATION.md
 /// </summary>
 public static class EyeCheckRound
 {
     public const int TrialMs = 3000;
     public const double MinMatch = 0.9;
-    // every instruction this many times, in a random order
-    public const int Repeats = 2;
+    // every instruction this many times, taking turns. once each is enough: 3 s each is ~100 frames after the reaction time
+    public const int Repeats = 1;
 
-    /// <summary>What to say for a trial, after the one before it (null for the first). Going from one closed eye to the
-    /// other says to open the first one, otherwise it sounds like both should end up closed.</summary>
-    public static string Say(CheckTrial trial, CheckTrial? previous = null) => (previous, trial) switch
+    public static string Say(CheckTrial trial) =>
+        trial == CheckTrial.CloseBoth ? "Close both eyes until you hear the sound." : "Open your eyes.";
+
+    /// <summary>How the eyes should be for a trial, shown under the instruction.</summary>
+    public static string Eyes(CheckTrial trial) => trial == CheckTrial.CloseBoth ? "Both eyes: closed" : "Both eyes: open";
+
+    /// <summary>"Good" while the tracker sees what was asked in most of the last moment's frames, shown green under the
+    /// instruction. null otherwise: the check round doesn't nag, getting it wrong is what it measures.</summary>
+    public static string? LiveGood(CheckTrial trial, IReadOnlyList<FrameSample> recent)
     {
-        (CheckTrial.CloseLeft, CheckTrial.CloseRight) => "Open your left eye, and close only your right eye.",
-        (CheckTrial.CloseRight, CheckTrial.CloseLeft) => "Open your right eye, and close only your left eye.",
-        (_, CheckTrial.CloseLeft) => "Close only your left eye.",
-        (_, CheckTrial.CloseRight) => "Close only your right eye.",
-        _ => "Open both eyes.",
-    };
+        if (recent.Count < 5 || recent.Count(f => Matches(trial, f)) < recent.Count * 0.8) return null;
+        return trial == CheckTrial.CloseBoth ? "Good, both eyes closed" : "Good, both eyes open";
+    }
 
-    /// <summary>How each eye should be for a trial, shown under the instruction.</summary>
-    public static string Eyes(CheckTrial trial) => trial switch
-    {
-        CheckTrial.CloseLeft => "Left eye: closed    Right eye: open",
-        CheckTrial.CloseRight => "Left eye: open    Right eye: closed",
-        _ => "Left eye: open    Right eye: open",
-    };
+    public static string Name(CheckTrial trial) => trial == CheckTrial.CloseBoth ? "both eyes closed" : "both eyes open";
 
-    public static string Name(CheckTrial trial) => trial switch
-    {
-        CheckTrial.CloseLeft => "left eye closed",
-        CheckTrial.CloseRight => "right eye closed",
-        _ => "both eyes open",
-    };
-
-    /// <summary>Each trial Repeats times, shuffled, never the same one twice in a row (that would look like nothing to do).</summary>
+    /// <summary>Closed and open taking turns, Repeats times each, starting with either.</summary>
     public static List<CheckTrial> Order(Random random)
     {
-        var all = Enum.GetValues<CheckTrial>();
-        for (int attempt = 0; ; attempt++)
-        {
-            var order = Enumerable.Repeat(all, Repeats).SelectMany(t => t).OrderBy(_ => random.Next()).ToList();
-            bool repeats = order.Zip(order.Skip(1)).Any(p => p.First == p.Second);
-            if (!repeats || attempt > 50) return order;
-        }
+        var first = random.Next(2) == 0 ? CheckTrial.CloseBoth : CheckTrial.OpenBoth;
+        var second = first == CheckTrial.CloseBoth ? CheckTrial.OpenBoth : CheckTrial.CloseBoth;
+        return Enumerable.Range(0, Repeats).SelectMany(_ => new[] { first, second }).ToList();
     }
 
     /// <summary>Does this frame show what was asked? Uses the tracker's own decisions, that's what's being checked.
-    /// An eye the tracker thinks is covered is wrong for all three, nothing was in front of it.</summary>
+    /// An eye the tracker thinks is covered is wrong for both, nothing was in front of it.</summary>
     public static bool Matches(CheckTrial trial, FrameSample f)
     {
         if (!f.FaceFound) return false;
-        var l = f.Left;
-        var r = f.Right;
-        return trial switch
-        {
-            CheckTrial.CloseLeft => l is { Closed: true, Covered: false } && r is { Closed: false, Covered: false },
-            CheckTrial.CloseRight => r is { Closed: true, Covered: false } && l is { Closed: false, Covered: false },
-            _ => l is { Closed: false, Covered: false } && r is { Closed: false, Covered: false },
-        };
+        bool closed = trial == CheckTrial.CloseBoth;
+        return f.Left is { Covered: false } l && l.Closed == closed && f.Right is { Covered: false } r && r.Closed == closed;
     }
 
     /// <summary>Share of matching frames per trial, from the usable frames (after the reaction time) of every run of it.</summary>

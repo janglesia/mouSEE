@@ -54,33 +54,8 @@ public partial class GridWindow
             ? "No tracker frames arrived during capture"
             : $"Both eyes detected in {stability:P0} of frames";
 
-        // ---- accuracy: only from a real validation measurement, never guessed
-        Level accuracyLevel = Level.Unknown;
-        if (_validation is { } v)
-        {
-            double fraction = v.MeanErrorPx / SystemParameters.PrimaryScreenWidth;
-            accuracyLevel = fraction <= GoodErrorFraction ? Level.Good
-                          : fraction <= FairErrorFraction ? Level.Fair
-                          : Level.Poor;
-            AccuracyValue.Text = accuracyLevel switch { Level.Good => "Good", Level.Fair => "Fair", _ => "Poor" };
-            AccuracyDetail.Text = $"Average error about {v.MeanErrorPx:0} px ({fraction:P1} of screen width) over {v.TargetCount} test targets";
-        }
-        else if (_validationPending)
-        {
-            AccuracyValue.Text = "Measuring...";
-            AccuracyDetail.Text = "Checking against the test targets";
-        }
-        else
-        {
-            AccuracyValue.Text = "Not measured";
-            AccuracyDetail.Text = "No accuracy check has been run yet";
-        }
-        AccuracyValue.Foreground = LevelBrush(accuracyLevel);
-
-        // ---- overall
+        // ---- overall. how accurate it is shows in the preview after "Try it out", the accuracy test measures it
         bool captureOk = solid == total && stabilityLevel is Level.Good or Level.Fair;
-        bool canTest = GazePredictor is not null;
-        TestButton.Visibility = canTest ? Visibility.Visible : Visibility.Collapsed;
 
         string quality, title, subtitle, next;
         Level qualityLevel;
@@ -92,37 +67,12 @@ public partial class GridWindow
             subtitle = "Tracking dropped out during some of the targets.";
             next = "Sit centered, keep your head still, keep both eyes open, and try again.";
         }
-        else if (accuracyLevel == Level.Poor)
-        {
-            quality = "Retry suggested"; qualityLevel = Level.Poor;
-            title = "Calibration needs another try";
-            subtitle = "The accuracy check shows large errors.";
-            next = "Sit centered, keep your head still, and try again.";
-        }
-        else if (_validationPending)
-        {
-            quality = "Checking..."; qualityLevel = Level.Unknown;
-            title = "Almost done";
-            subtitle = "Checking how accurate the calibration is.";
-            next = "This only takes a moment.";
-        }
-        else if (accuracyLevel == Level.Unknown)
-        {
-            quality = "Unverified"; qualityLevel = Level.Fair;
-            title = "Calibration captured";
-            subtitle = "Every target was captured, but accuracy hasn't been checked.";
-            next = canTest
-                ? "Use Test tracking to see whether the dot follows your eyes, then accept or try again."
-                : "You can accept it, but there's no measurement yet of how closely it follows your eyes.";
-        }
         else
         {
-            quality = "Pass"; qualityLevel = accuracyLevel;
-            title = "Calibration complete!";
-            subtitle = "Your eye tracker is ready to use.";
-            next = canTest
-                ? "Use Test tracking to check that the dot follows your eyes, then accept."
-                : "Accept to start using it, or try again if you moved during calibration.";
+            quality = "Captured"; qualityLevel = Level.Good;
+            title = "Calibration captured";
+            subtitle = "Every target was captured with both eyes tracked.";
+            next = "Try it out: it's saved and you see the bubble with it, then keep it or do the grid again if you moved during it.";
         }
 
         QualityValue.Text = quality;
@@ -134,40 +84,65 @@ public partial class GridWindow
     }
 
     // =====================================================================
-    // Visual test: a dot follows the predicted gaze so the user can check it before accepting
+    // The preview: the calibration is saved, the 20 points stay up as rings and the bubble follows the eyes with it,
+    // like the fine-tune's preview. Keep it, or do the grid again (which puts back what was saved)
     // =====================================================================
 
-    private void EnterTestMode()
+    // the bubble moves a third of the way to each new frame, so it can be read and doesn't shake
+    private const double PreviewSmoothing = 0.35;
+    private const int PreviewTrackerTimeoutMs = 30000;
+    private (double X, double Y)? _previewBubble;
+    private TaskCompletionSource? _previewFirstFrame;
+
+    private async Task ShowPreviewAsync()
     {
-        foreach (var ring in _testRings) TestLayer.Children.Remove(ring);
-        _testRings.Clear();
-
-        (double X, double Y)[] spots = [(0.15, 0.15), (0.85, 0.15), (0.5, 0.5), (0.15, 0.85), (0.85, 0.85)];
-        foreach (var (x, y) in spots)
+        foreach (var ring in _previewRings) PreviewLayer.Children.Remove(ring);
+        _previewRings.Clear();
+        foreach (var (x, y) in Targets)
         {
-            var ring = new Ellipse
-            {
-                Width = 64,
-                Height = 64,
-                Stroke = RingStroke,
-                StrokeThickness = 3,
-                StrokeDashArray = new DoubleCollection { 2, 2 },
-            };
-            Canvas.SetLeft(ring, x * Root.ActualWidth - 32);
-            Canvas.SetTop(ring, y * Root.ActualHeight - 32);
-            TestLayer.Children.Add(ring);
-            _testRings.Add(ring);
+            var ring = new Ellipse { Width = 40, Height = 40, Stroke = RingStroke, StrokeThickness = 3 };
+            Canvas.SetLeft(ring, x * Root.ActualWidth - 20);
+            Canvas.SetTop(ring, y * Root.ActualHeight - 20);
+            PreviewLayer.Children.Add(ring);
+            _previewRings.Add(ring);
         }
+        GazeDot.Visibility = Visibility.Collapsed;
+        _previewBubble = null;
+        PreviewText.Text = "Starting the tracker with your new calibration...";
+        PreviewButtons.Visibility = Visibility.Collapsed;
+        ShowPhase(Phase.Preview);
 
-        ShowPhase(Phase.Test);
+        // the tracker restarts with the new numbers, wait for it and its first bubble
+        var app = (App)Application.Current;
+        await app.WhenTrackerUpToDateAsync();
+        _previewFirstFrame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Task.WhenAny(_previewFirstFrame.Task, Task.Delay(PreviewTrackerTimeoutMs));
+        if (_phase != Phase.Preview) return;
+
+        PreviewText.Text = "Look at the rings. The red dot is where the bubble lands with your new calibration. " +
+                           "When you're done looking, close your eyes for 2 seconds, then choose.";
+        PreviewButtons.Visibility = Visibility.Visible;
+        _onChoice = yes => { if (yes) Close(); else Redo(); };
+        Choice.AskAfterLooking("Keep it", "Do the grid again");
+        _ = _speaker.SayAsync("Done. Look at the rings, the red dot is where the bubble lands now. " +
+                              "When you're done looking, close your eyes for two seconds, then choose.", CancellationToken.None);
     }
 
+    // the bubble with the new calibration: the tracker's point, with the re-center's shift (none yet) and no fine-tune
     private void UpdateGazeDot(TrackerMessage msg)
     {
-        var predicted = GazePredictor?.Invoke(msg);
-        if (predicted is not { } p) return;
-
-        Canvas.SetLeft(GazeDot, Math.Clamp(p.X, 0, 1) * Root.ActualWidth - GazeDot.Width / 2);
-        Canvas.SetTop(GazeDot, Math.Clamp(p.Y, 0, 1) * Root.ActualHeight - GazeDot.Height / 2);
+        if (msg.Faces?.FirstOrDefault()?.Eyes?.Estimate is not { Valid: true, X: double x, Y: double y })
+        {
+            GazeDot.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _previewFirstFrame?.TrySetResult();
+        var now = ((App)Application.Current).Bubble(x, y);
+        _previewBubble = _previewBubble is { } l
+            ? (l.X + (now.X - l.X) * PreviewSmoothing, l.Y + (now.Y - l.Y) * PreviewSmoothing)
+            : now;
+        Canvas.SetLeft(GazeDot, Math.Clamp(_previewBubble.Value.X, 0, 1) * Root.ActualWidth - GazeDot.Width / 2);
+        Canvas.SetTop(GazeDot, Math.Clamp(_previewBubble.Value.Y, 0, 1) * Root.ActualHeight - GazeDot.Height / 2);
+        GazeDot.Visibility = Visibility.Visible;
     }
 }

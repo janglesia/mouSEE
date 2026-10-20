@@ -13,16 +13,11 @@
         FontFamily="Segoe UI"
         KeyDown="Window_KeyDown">
     <Grid x:Name="Root">
-        <!-- the dot for step 1, moved from code. step 1 runs on a bright background, see SetBright -->
-        <Canvas x:Name="DotLayer" IsHitTestVisible="False" Visibility="Collapsed">
-            <Ellipse x:Name="Dot" Width="28" Height="28" Fill="#294A42" />
-        </Canvas>
-
         <!-- before starting -->
         <StackPanel x:Name="IntroPanel" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="640">
             <TextBlock Text="Eye check" Foreground="White" FontSize="34" FontWeight="SemiBold" />
             <TextBlock Foreground="#C0C0C0" FontSize="16" TextWrapping="Wrap" Margin="0,12,0,0"
-                       Text="mouSEE learns what your eyes look like open and closed, and how you hold your head. It takes about a minute and a half, and you only need your eyes and your head. Every instruction is read out loud, so turn your sound on. Do each one until you hear the sound, then the next one starts." />
+                       Text="The last part: mouSEE learns what your eyes look like closed. You close both eyes a few times, once with your head tilted up and once down. It takes under a minute. Every instruction is read out loud, so turn your sound on. Keep your eyes closed until you hear the sound, then the next one starts." />
             <TextBlock Foreground="#C0C0C0" FontSize="16" TextWrapping="Wrap" Margin="0,12,0,0"
                        Text="Sit how you normally would, in the light you normally use." />
             <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
@@ -41,6 +36,8 @@
             <TextBlock x:Name="InstructionText" Foreground="White" FontSize="40" FontWeight="SemiBold" TextWrapping="Wrap"
                        TextAlignment="Center" Margin="0,12,0,0" />
             <TextBlock x:Name="HintText" Foreground="#E0A458" FontSize="20" TextWrapping="Wrap" TextAlignment="Center" Margin="0,16,0,0" />
+            <!-- live while a step records: what's wrong (amber), or green "Good" when the eyes and head are right (SetLive) -->
+            <TextBlock x:Name="LiveText" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" Margin="0,12,0,0" />
             <Border Background="#2B2B2B" Height="6" CornerRadius="3" Width="420" Margin="0,28,0,0">
                 <Border x:Name="ProgressFill" Background="#F7D060" CornerRadius="3" HorizontalAlignment="Left" Width="0" />
             </Border>

@@ -134,14 +134,8 @@
                 <TextBlock x:Name="ResultTitle" Foreground="White" FontSize="28" FontWeight="SemiBold" Margin="0,16,0,0" />
                 <TextBlock x:Name="ResultSubtitle" Foreground="#BDBDBD" FontSize="14" TextWrapping="Wrap" Margin="0,8,0,0" />
 
-                <UniformGrid Columns="2" Margin="0,24,-8,0">
-                    <Border Style="{StaticResource TileBorder}">
-                        <StackPanel>
-                            <TextBlock Text="ESTIMATED ACCURACY" Style="{StaticResource TileLabel}" />
-                            <TextBlock x:Name="AccuracyValue" Style="{StaticResource TileValue}" />
-                            <TextBlock x:Name="AccuracyDetail" Style="{StaticResource TileDetail}" />
-                        </StackPanel>
-                    </Border>
+                <!-- how accurate it is: the preview after "Try it out" shows it, the accuracy test measures it -->
+                <UniformGrid Columns="3" Margin="0,24,-8,0">
                     <Border Style="{StaticResource TileBorder}">
                         <StackPanel>
                             <TextBlock Text="TRACKING STATUS" Style="{StaticResource TileLabel}" />
@@ -169,27 +163,24 @@
                 <TextBlock x:Name="NextStepText" Foreground="#E0E0E0" FontSize="13" TextWrapping="Wrap" Margin="0,6,0,0" />
 
                 <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
-                    <Button x:Name="AcceptButton" Content="Accept calibration" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="AcceptButton_Click" />
-                    <Button Content="Try again" Style="{StaticResource DarkButton}" Margin="0,0,10,0" Click="TryAgainButton_Click" />
-                    <Button x:Name="TestButton" Content="Test tracking" Style="{StaticResource DarkButton}" Visibility="Collapsed" Click="TestButton_Click" />
+                    <Button x:Name="AcceptButton" Content="Try it out" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="AcceptButton_Click" />
+                    <Button Content="Do the grid again" Style="{StaticResource DarkButton}" Margin="0,0,10,0" Click="TryAgainButton_Click" />
                 </StackPanel>
             </StackPanel>
         </Border>
 
-        <!-- ================= Visual test (only reachable when a GazePredictor is set) ================= -->
-        <Canvas x:Name="TestLayer" Visibility="Collapsed" IsHitTestVisible="False">
+        <!-- ================= Preview: saved, the 20 points as rings and the bubble live with the new calibration ================= -->
+        <Canvas x:Name="PreviewLayer" Visibility="Collapsed" IsHitTestVisible="False">
             <Ellipse x:Name="GazeDot" Width="30" Height="30" Fill="#C65D43" Stroke="White" StrokeThickness="3"
-                     Opacity="0.92" Panel.ZIndex="10" />
+                     Opacity="0.92" Panel.ZIndex="10" Visibility="Collapsed" />
         </Canvas>
-        <Border x:Name="TestBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                Margin="0,0,0,36" Background="Black" CornerRadius="8" Padding="24,16">
+        <Border x:Name="PreviewBar" Visibility="Collapsed" VerticalAlignment="Top" HorizontalAlignment="Center"
+                Margin="0,24,0,0" Background="Black" CornerRadius="8" Padding="24,16" MaxWidth="900">
             <StackPanel>
-                <TextBlock Text="Look at each ring. The red dot shows where the tracker thinks you're looking."
-                           Foreground="#E0E0E0" FontSize="14" HorizontalAlignment="Center" />
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
-                    <Button Content="Accept calibration" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="AcceptButton_Click" />
-                    <Button Content="Try again" Style="{StaticResource DarkButton}" Margin="0,0,10,0" Click="TryAgainButton_Click" />
-                    <Button Content="Back to results" Style="{StaticResource DarkButton}" Click="BackToResultButton_Click" />
+                <TextBlock x:Name="PreviewText" Foreground="#E0E0E0" FontSize="14" TextWrapping="Wrap" TextAlignment="Center" />
+                <StackPanel x:Name="PreviewButtons" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                    <Button Content="Keep it" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Click="KeepButton_Click" />
+                    <Button Content="Do the grid again" Style="{StaticResource DarkButton}" Click="RedoButton_Click" />
                 </StackPanel>
             </StackPanel>
         </Border>

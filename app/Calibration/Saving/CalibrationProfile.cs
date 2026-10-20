@@ -35,7 +35,7 @@ public sealed record CalibrationProfile
     // how Gaze was fitted to GazeTargets and how far off it still is. null if it wasn't fitted
     public GazeFitReport? GazeFit { get; init; }
 
-    // the fine-tune's last correction on the bubble (FineTuneWindow), and what it found. null if there wasn't one.
+    // the fine-tune's last correction on the bubble (from the accuracy test, AccuracyTestWindow), and what it found. null if there wasn't one.
     // made against this Gaze, so a new fit of Gaze drops it
     public GazeCorrection? FineTune { get; init; }
     public FineTuneReport? FineTuneReport { get; init; }
@@ -50,9 +50,12 @@ public sealed record CalibrationProfile
 /// </summary>
 public sealed record EyeThresholds
 {
-    // eye closed when iris_ratio is above this (eye_extractor.py)
+    // lids closer together than this mean the eye is closed whatever the iris says (eye_extractor.py). what the eye check tunes
+    [JsonPropertyName("LIDS_SHUT_OPENNESS")] public double? LidsShutOpenness { get; init; }
+    // eye closed when iris_ratio is above this (eye_extractor.py). for winks, eye checks from before they were left out set it
     [JsonPropertyName("IRIS_HIDDEN_RATIO")] public double? IrisHiddenRatio { get; init; }
-    // lids at least this far apart mean the eye is open whatever the iris says, glasses reflections (eye_extractor.py)
+    // lids at least this far apart mean the eye is open whatever the iris says, glasses reflections (eye_extractor.py).
+    // also for winks, set by older eye checks only
     [JsonPropertyName("LIDS_OPEN_OPENNESS")] public double? LidsOpenOpenness { get; init; }
     // eye covered when contrast is below this (eye_extractor.py). the eye check doesn't set it (that needs a hand
     // over the eye), it's here for a calibration file that has it
@@ -60,7 +63,8 @@ public sealed record EyeThresholds
     // head angle when sitting normally, head_turned is measured from here (tracking_status.py)
     [JsonPropertyName("REST_PITCH")] public double? RestPitch { get; init; }
     [JsonPropertyName("REST_YAW")] public double? RestYaw { get; init; }
-    // how far from resting the head can turn before it counts as head_turned (tracking_status.py)
+    // how far from resting the head can turn before it counts as head_turned (tracking_status.py). older eye checks
+    // set them (they could only raise the defaults, and never did), it's the defaults now
     [JsonPropertyName("MAX_PITCH")] public double? MaxPitch { get; init; }
     [JsonPropertyName("MAX_YAW")] public double? MaxYaw { get; init; }
 }

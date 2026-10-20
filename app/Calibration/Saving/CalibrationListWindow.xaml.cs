@@ -12,8 +12,6 @@ namespace app.Calibration.Saving;
 public partial class CalibrationListWindow : Window
 {
     private readonly App _app = (App)Application.Current;
-    private readonly Speaker _speaker = new();
-    private bool _askedOutLoud;
 
     // one row in the list
     public sealed record Row(string Id, string Name, string Detail, Visibility InUseVisibility);
@@ -33,7 +31,6 @@ public partial class CalibrationListWindow : Window
         {
             _app.Calibrations.Changed -= Refresh;
             _app.Settings.Changed -= OnSettingsChanged;
-            _speaker.Dispose();
         };
         Refresh();
         BuildHeadModes();
@@ -100,14 +97,9 @@ public partial class CalibrationListWindow : Window
 
         if (none)
         {
+            // answered by looking right or left, written under the question. not said out loud: the voice is for the
+            // calibration itself
             Choice.Ask("Calibrate now", "Use default values");
-            // the question is for people who may not be able to use a mouse, so say it too, once
-            if (!_askedOutLoud)
-            {
-                _askedOutLoud = true;
-                _ = _speaker.SayAsync("mouSEE isn't calibrated yet. To calibrate now, look to the right and hold it for three seconds. " +
-                                      "To use default values, look to the left.", CancellationToken.None);
-            }
         }
         else
         {
@@ -130,7 +122,6 @@ public partial class CalibrationListWindow : Window
         var row = ProfileList.SelectedItem as Row;
         UseButton.IsEnabled = row is not null && row.InUseVisibility != Visibility.Visible;
         DeleteButton.IsEnabled = row is not null;
-        FineTuneButton.IsEnabled = _app.Calibrations.Active is not null;
     }
 
     private void OnSettingsChanged(AppSettings old, AppSettings now)
@@ -156,12 +147,6 @@ public partial class CalibrationListWindow : Window
     {
         Close();
         _app.StartAccuracyTest();
-    }
-
-    private void FineTuneButton_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-        _app.StartFineTune();
     }
 
     private void StartNew()

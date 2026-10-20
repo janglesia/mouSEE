@@ -40,6 +40,12 @@ public sealed record FineTuneReport
     public string? ShapeY { get; init; }
     // the head mode it was made in (docs/bubble/HEAD-MODES.md): cancelling or not changes where the bubble lands a little
     public HeadModes.HeadMode HeadMode { get; init; }
+    // the gaze numbers were fitted again with these dots added to the grid's, and the correction is on top of that
+    // (false for fine-tunes from before that, or when it couldn't be fitted). ErrorXOldFit / ErrorYOldFit: how far off the
+    // bubble was on these dots with the gaze numbers as they were, ErrorXBefore / ErrorYBefore are with the new ones
+    public bool Refitted { get; init; }
+    public double? ErrorXOldFit { get; init; }
+    public double? ErrorYOldFit { get; init; }
     public string Explanation { get; init; } = "";
     // every dot and where the bubble landed on it, to fit it again later
     public List<FineTunePoint> Dots { get; init; } = [];
@@ -49,9 +55,15 @@ public sealed record FineTuneReport
 public sealed record FineTunePoint(double TargetX, double TargetY, double BubbleX, double BubbleY);
 
 /// <summary>
-/// The fine-tune: dots around the screen, and for each where the bubble landed against where it should have been. The
+/// The fine-tune, run together with the accuracy test on its dots (AccuracyTestWindow): for each dot where the bubble
+/// landed against where it should have been. The
 /// calibration learns from the eyes, this learns from where the bubble ends up, so it corrects whatever the calibration
 /// still gets wrong (and how you sit right now).
+///
+/// The dots are also more of what the grid recorded (eyes on known points, sitting normally, on another day), so the gaze
+/// numbers are fitted again with them added to the grid's targets first (App.FitWithFineTune), and the correction is
+/// fitted on where the bubble lands with those (GazeFit.Predict). Without that the dots only ever fed this correction,
+/// and fitting the calibration again for any reason threw them away.
 ///
 /// A flat correction (shift, stretch, tilt) took up/down from 24% to 11% and from 11% to 5.4% of the screen height on the
 /// first two accuracy tests, on dots it wasn't fitted on. But with the camera under the screen looking up, the first real
@@ -63,8 +75,8 @@ public sealed record FineTunePoint(double TargetX, double TargetY, double Bubble
 /// </summary>
 public static class FineTune
 {
-    public const int SettleMs = 800;
-    public const int CaptureMs = 1500;
+    // the dots are the accuracy test's (AccuracyTestWindow runs both). their target numbers (GazeTargetSummary.Index), well after the grid's and the head step's
+    public const int FirstIndex = 100;
     // fewer dots with a bubble than this and there's not enough to fit the curves and check them
     public const int MinPoints = 8;
     // a direction is only corrected when the correction is at least this much better on dots it wasn't fitted on
@@ -97,20 +109,6 @@ public static class FineTune
         new("arc", "with the sides landing higher or lower than the middle", [Term.One, Term.X, Term.Y, Term.UU]),
         new("arc-and-uneven", "with the sides higher or lower than the middle, and stretched more at one end", [Term.One, Term.X, Term.Y, Term.UU, Term.VV]),
     ];
-
-    /// <summary>5 columns by 4 rows, close to the corners (the curves show most there), snake order.</summary>
-    public static IReadOnlyList<(double X, double Y)> Dots { get; } = BuildDots();
-
-    private static List<(double X, double Y)> BuildDots()
-    {
-        double[] xs = [0.08, 0.29, 0.5, 0.71, 0.92];
-        double[] ys = [0.1, 0.37, 0.63, 0.9];
-        var list = new List<(double, double)>();
-        for (int r = 0; r < ys.Length; r++)
-            for (int c = 0; c < xs.Length; c++)
-                list.Add((r % 2 == 0 ? xs[c] : xs[^(c + 1)], ys[r]));
-        return list;
-    }
 
     /// <summary>The correction and how it did. Each direction on its own: every shape is fitted without one dot and
     /// measured on that dot, for every dot. The best shape is kept, and only if it's clearly better than no correction.</summary>

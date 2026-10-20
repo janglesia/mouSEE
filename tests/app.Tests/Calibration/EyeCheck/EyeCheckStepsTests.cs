@@ -5,10 +5,24 @@ public class EyeCheckStepsTests
     private static StepCheck Check(EyeCheckStepKind kind, List<FrameSample> frames) =>
         EyeCheckSteps.Check(FakeEyeCheck.Step(kind), frames, FakeEyeCheck.Baseline);
 
+    private static List<FrameSample> BothClosed(double pitch = -10) =>
+        FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Closed(i)), pitch: pitch);
+
     [Fact]
     public void Steps_are_in_the_order_of_the_doc()
     {
         Assert.Equal(Enum.GetValues<EyeCheckStepKind>(), EyeCheckSteps.All.Select(s => s.Kind));
+    }
+
+    [Fact]
+    public void Tilt_steps_say_to_close_the_eyes_once_the_head_is_tilted()
+    {
+        // the live guidance for the tilt can't be read with the eyes closed
+        foreach (var step in EyeCheckSteps.All)
+        {
+            Assert.Equal(step.IsTilt, step.Close is not null);
+            if (step.IsTilt) Assert.DoesNotContain("close", step.Say, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
@@ -17,6 +31,14 @@ public class EyeCheckStepsTests
         var frames = Enumerable.Range(0, 50).Select(i => new FrameSample(i * 50, true, 0, 0, null, null, 30)).ToList();
         Assert.All(EyeCheckSteps.Usable(frames), f => Assert.True(f.Ms >= 1200));
         Assert.Equal(26, EyeCheckSteps.Usable(frames).Count);
+    }
+
+    [Fact]
+    public void Resting_angle_is_the_median_of_the_grid()
+    {
+        var grid = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Open(i), FakeEyeCheck.Open(i)), pitchAt: i => -14 + i % 3, yaw: 2.5);
+        Assert.Equal(new EyeCheckBaseline(-13, 2.5), EyeCheckSteps.Baseline(grid));
+        Assert.Null(EyeCheckSteps.Baseline(grid.Take(5).ToList()));
     }
 
     [Fact]
@@ -29,83 +51,92 @@ public class EyeCheckStepsTests
     [Fact]
     public void Too_few_frames_fails()
     {
-        Assert.False(Check(EyeCheckStepKind.Rest, FakeEyeCheck.Frames(5, i => (FakeEyeCheck.Open(), FakeEyeCheck.Open()))).Ok);
+        Assert.False(Check(EyeCheckStepKind.CloseBoth, FakeEyeCheck.Frames(5, i => (FakeEyeCheck.Closed(), FakeEyeCheck.Closed()))).Ok);
     }
 
     [Fact]
     public void Face_missing_fails()
     {
-        var frames = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Open(), FakeEyeCheck.Open()), face: false);
-        Assert.Contains("face", Check(EyeCheckStepKind.CloseLeft, frames).Problem);
+        var frames = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(), FakeEyeCheck.Closed()), face: false);
+        Assert.Contains("face", Check(EyeCheckStepKind.CloseBoth, frames).Problem);
     }
 
     [Fact]
-    public void Wink_with_the_wrong_eye_fails()
+    public void Both_eyes_have_to_close()
     {
-        var frames = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Open(i), FakeEyeCheck.Closed(i)));
-        Assert.Equal("Close your left eye all the way.", Check(EyeCheckStepKind.CloseLeft, frames).Problem);
+        var oneOpen = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Open(i)));
+        Assert.Equal("Keep both eyes closed until you hear the sound.", Check(EyeCheckStepKind.CloseBoth, oneOpen).Problem);
     }
 
     [Fact]
-    public void Both_closed_when_one_was_asked_fails()
+    public void Shut_lids_count_when_the_blink_score_is_low()
     {
-        var frames = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i, 0.7), FakeEyeCheck.Closed(i, 0.7)));
-        Assert.Contains("Keep your right eye open", Check(EyeCheckStepKind.CloseLeft, frames).Problem);
-    }
-
-    [Fact]
-    public void Closed_eye_counts_by_iris_ratio_when_blink_scores_are_the_same()
-    {
-        // tilting the head up makes the blink score of both eyes ~0.37, the iris ratio still shows it
-        var sameBlink = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i, 0.37), FakeEyeCheck.Open(i) with { Blink = 0.38 }), pitch: -33);
-        Assert.True(Check(EyeCheckStepKind.CloseLeftHeadUp, sameBlink).Ok);
+        // tilting the head can lower MediaPipe's blink score, the lids still show it
+        var lowBlink = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i, blink: 0.3), FakeEyeCheck.Closed(i, blink: 0.3)), pitch: -33);
+        Assert.True(Check(EyeCheckStepKind.CloseBothHeadUp, lowBlink).Ok);
     }
 
     [Fact]
     public void Head_has_to_tilt_the_right_way()
     {
-        var notTilted = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Open(i)), pitch: -15);
-        Assert.Contains("further up", Check(EyeCheckStepKind.CloseLeftHeadUp, notTilted).Problem);
-
+        Assert.Contains("further up", Check(EyeCheckStepKind.CloseBothHeadUp, BothClosed(pitch: -15)).Problem);
         // tilted down when up was asked
-        var wrongWay = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Open(i)), pitch: 10);
-        Assert.False(Check(EyeCheckStepKind.CloseLeftHeadUp, wrongWay).Ok);
-
-        var down = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Open(i), FakeEyeCheck.Closed(i)), pitch: -12);
-        Assert.Contains("further down", Check(EyeCheckStepKind.CloseRightHeadDown, down).Problem);
+        Assert.False(Check(EyeCheckStepKind.CloseBothHeadUp, BothClosed(pitch: 10)).Ok);
+        Assert.Contains("further down", Check(EyeCheckStepKind.CloseBothHeadDown, BothClosed(pitch: -12)).Problem);
     }
 
     [Fact]
     public void Tilt_is_measured_from_resting()
     {
         // -26 is only 16 up from a resting -10, but that's enough
-        var frames = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Open(i)), pitch: -26);
-        Assert.True(Check(EyeCheckStepKind.CloseLeftHeadUp, frames).Ok);
+        Assert.True(Check(EyeCheckStepKind.CloseBothHeadUp, BothClosed(pitch: -26)).Ok);
+    }
+
+    // resting pitch -10 (FakeEyeCheck.Baseline), the tracker's pitch gets more negative tilting up
+    private static (bool InRange, string Hint)? Tilt(EyeCheckStepKind kind, double pitch) =>
+        EyeCheckSteps.TiltGuide(FakeEyeCheck.Step(kind), FakeEyeCheck.Frames(10, i => (FakeEyeCheck.Open(i), FakeEyeCheck.Open(i)), pitch: pitch),
+                                FakeEyeCheck.Baseline);
+
+    [Fact]
+    public void Tilt_guide_says_how_far_to_go()
+    {
+        Assert.Equal((false, "Tilt your head up a little more (10° of 15°)"), Tilt(EyeCheckStepKind.CloseBothHeadUp, -20));
+        Assert.Equal((true, "Good, hold it there (20°)"), Tilt(EyeCheckStepKind.CloseBothHeadUp, -30));
+        Assert.Equal((false, "A little less, tilt your head back a bit (35°)"), Tilt(EyeCheckStepKind.CloseBothHeadUp, -45));
+        Assert.Equal((true, "Good, hold it there (18°)"), Tilt(EyeCheckStepKind.CloseBothHeadDown, 8));
+        // tilting the wrong way is "more" of the right way, from nothing
+        Assert.Equal((false, "Tilt your head down a little more (0° of 15°)"), Tilt(EyeCheckStepKind.CloseBothHeadDown, -20));
     }
 
     [Fact]
-    public void Both_eyes_have_to_close()
+    public void Tilt_guide_only_for_the_tilt_steps_and_with_a_resting_angle()
     {
-        var oneOpen = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i, 0.7), FakeEyeCheck.Open(i)));
-        Assert.False(Check(EyeCheckStepKind.CloseBoth, oneOpen).Ok);
+        Assert.Null(Tilt(EyeCheckStepKind.CloseBoth, -30));
+        Assert.Null(EyeCheckSteps.TiltGuide(FakeEyeCheck.Step(EyeCheckStepKind.CloseBothHeadUp),
+                                            FakeEyeCheck.Frames(10, i => (FakeEyeCheck.Open(i), FakeEyeCheck.Open(i)), pitch: -30), null));
+    }
+
+    private static (bool Good, string Text)? Live(EyeCheckStepKind kind, bool closed, double pitch = -10, bool problemsToo = true) =>
+        EyeCheckSteps.LiveStatus(FakeEyeCheck.Step(kind),
+            FakeEyeCheck.Frames(20, i => closed ? (FakeEyeCheck.Closed(i), FakeEyeCheck.Closed(i)) : (FakeEyeCheck.Open(i), FakeEyeCheck.Open(i)), pitch: pitch),
+            FakeEyeCheck.Baseline, problemsToo);
+
+    [Fact]
+    public void Live_status_says_good_when_the_eyes_are_closed()
+    {
+        Assert.Equal((true, "Good, keep them closed"), Live(EyeCheckStepKind.CloseBoth, true));
+        // the tilt steps say the angle when both the head and the eyes are right
+        Assert.Equal((true, "Good, hold it there (20°)"), Live(EyeCheckStepKind.CloseBothHeadUp, true, pitch: -30));
     }
 
     [Fact]
-    public void Look_around_needs_both_eyes_open()
+    public void Live_status_says_whats_wrong_only_once_there_was_time_to_react()
     {
-        var closed = FakeEyeCheck.Frames(100, i => (FakeEyeCheck.Closed(i, 0.7), FakeEyeCheck.Open(i)));
-        Assert.False(Check(EyeCheckStepKind.LookAround, closed).Ok);
-    }
-
-    [Fact]
-    public void Live_hint_says_what_to_fix_and_nothing_when_it_is_right()
-    {
-        var step = FakeEyeCheck.Step(EyeCheckStepKind.CloseLeftHeadUp);
-        var right = FakeEyeCheck.Frames(25, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Open(i)), pitch: -33);
-        var notTilted = FakeEyeCheck.Frames(25, i => (FakeEyeCheck.Closed(i), FakeEyeCheck.Open(i)), pitch: -10);
-
-        Assert.Null(EyeCheckSteps.LiveHint(step, right, FakeEyeCheck.Baseline));
-        Assert.Contains("further up", EyeCheckSteps.LiveHint(step, notTilted, FakeEyeCheck.Baseline));
-        Assert.Null(EyeCheckSteps.LiveHint(step, right.Take(3).ToList(), FakeEyeCheck.Baseline)); // too little to say anything
+        var wrong = Live(EyeCheckStepKind.CloseBoth, false);
+        Assert.False(wrong!.Value.Good);
+        Assert.Null(Live(EyeCheckStepKind.CloseBoth, false, problemsToo: false));
+        // the head angle is live from the start though
+        Assert.Equal((false, "Tilt your head up a little more (5° of 15°)"),
+                     Live(EyeCheckStepKind.CloseBothHeadUp, true, pitch: -15, problemsToo: false));
     }
 }

@@ -4,11 +4,14 @@ namespace app.Tests;
 
 public class FineTuneTests
 {
+    // the fine-tune's dots: the accuracy test's, sitting normally
+    private static readonly List<TestPoint> Dots = AccuracyTest.Points.Where(p => p.Phase == AccuracyTest.Normal).ToList();
+
     // the bubble a known correction away from the dots, with a bit of noise so leave-one-out has something to measure
     private static List<FineTunePoint> Points(Func<double, double, (double X, double Y)> bubble, double noise = 0.004)
     {
         var random = new Random(7);
-        return FineTune.Dots.Select(d =>
+        return Dots.Select(d =>
         {
             var (x, y) = bubble(d.X, d.Y);
             return new FineTunePoint(d.X, d.Y, x + (random.NextDouble() - 0.5) * noise, y + (random.NextDouble() - 0.5) * noise);
@@ -18,10 +21,10 @@ public class FineTuneTests
     [Fact]
     public void Dots_AreTwentyInsideTheScreen()
     {
-        Assert.Equal(20, FineTune.Dots.Count);
-        Assert.All(FineTune.Dots, d => Assert.InRange(d.X, 0.05, 0.95));
-        Assert.All(FineTune.Dots, d => Assert.InRange(d.Y, 0.05, 0.95));
-        Assert.Equal(20, FineTune.Dots.Distinct().Count());
+        Assert.Equal(20, Dots.Count);
+        Assert.All(Dots, d => Assert.InRange(d.X, 0.05, 0.95));
+        Assert.All(Dots, d => Assert.InRange(d.Y, 0.05, 0.95));
+        Assert.Equal(20, Dots.Select(d => (d.X, d.Y)).Distinct().Count());
     }
 
     [Fact]

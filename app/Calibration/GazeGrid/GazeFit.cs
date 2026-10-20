@@ -60,7 +60,8 @@ public static partial class GazeFit
         return FitHeadX(fit.Model, fit.Report, lean, leanX, faceXRef);
     }
 
-    // the targets the left/right and up/down fit use: the grid targets sitting normally, not the accuracy check or the head step
+    // the targets the left/right and up/down fit use: the grid targets and the fine-tune's dots, sitting normally, not the
+    // old accuracy check or the head step
     private static bool IsGrid(GazeTargetSummary t) => !t.IsValidation && !t.MoveHead && t.Pose is null;
 
     /// <summary>tan of the left/right angle for a target, averaged over both eyes, the same as the tracker's (the t in gaze_model.py).</summary>
@@ -80,6 +81,62 @@ public static partial class GazeFit
         if (model.YArc is { } arc && t.LeftH is not null && t.RightH is not null) y += arc * Math.Pow(Tan(model, t), 2);
         if (model.YOpennessSq is { } sq) y += sq * open * open;
         return y;
+    }
+
+    /// <summary>
+    /// Where the tracker puts the bubble (0-1 of the screen) with these gaze numbers, for both eyes open: the same math
+    /// as estimate_gaze() / _screen_position() in gaze_model.py. For the fine-tune, which fits the gaze again and needs the
+    /// bubble with the new numbers before the tracker has them. leftV / rightV: null for a recording without them (then
+    /// y_iris is 0 anyway). faceX / pitch: where the face was and how the head was tilted, null leaves the head
+    /// corrections out, like the tracker does in the head modes without them (--no-head-compensation).
+    /// </summary>
+    public static (double X, double Y) Predict(GazeModel m, double leftH, double rightH, double? leftV, double? rightV,
+                                               double openness, double? faceX, double? pitch)
+    {
+        double k = m.KH ?? DefaultK;
+        double t = Math.Tan((Angle(leftH, m.LeftHBaseline ?? 0, k) + Angle(rightH, m.RightHBaseline ?? 0, k)) / 2);
+        double x = (m.CenterX ?? 0.5) + (m.GainX ?? DefaultGainX) * t + (m.XSqueeze ?? 0) * t * (openness - (m.OpennessRef ?? 0.3));
+
+        double v = leftV is { } l && rightV is { } r ? (l + r) / 2 : 0;
+        bool fitted = (m.YOpenness ?? 0) != 0 || (m.YIris ?? 0) != 0;
+        double y;
+        if (fitted)
+        {
+            y = (m.YConst ?? 0.5) + (m.YOpenness ?? 0) * openness + (m.YIris ?? 0) * v
+                + (m.YArc ?? 0) * t * t + (m.YOpennessSq ?? 0) * openness * openness;
+        }
+        else
+        {
+            // the angle model the tracker falls back to without a fitted up/down
+            double kv = m.KV ?? DefaultK;
+            double angle = (Angle(leftV ?? 0, m.LeftVBaseline ?? 0, kv) + Angle(rightV ?? 0, m.RightVBaseline ?? 0, kv)) / 2;
+            y = (m.CenterY ?? 0.5) + (m.GainY ?? DefaultGainY) * Math.Tan(angle);
+        }
+
+        if (faceX is { } fx)
+        {
+            double moved = fx - (m.HeadXRef ?? 0.5);
+            x += (m.HeadXGain ?? 0) * moved + (m.HeadXShrink ?? 0) * t * Math.Abs(moved);
+            if (fitted) y += (m.HeadYLean ?? 0) * Math.Abs(moved);
+        }
+        if (fitted && pitch is { } p) y += (m.HeadYPitch ?? 0) * (p - (m.PitchRef ?? 0));
+        return (x, y);
+    }
+
+    /// <summary>Predict for a target, from its medians. null without both eyes' numbers or the lid openness.</summary>
+    public static (double X, double Y)? Predict(GazeModel m, GazeTargetSummary t, bool headCorrections)
+    {
+        if (t.LeftH is null || t.RightH is null || t.Openness is null) return null;
+        return Predict(m, t.LeftH.Median, t.RightH.Median, t.LeftV?.Median, t.RightV?.Median, t.Openness.Median,
+                       headCorrections ? t.FaceX?.Median : null, headCorrections ? t.Pitch?.Median : null);
+    }
+
+    /// <summary>Predict for one frame. null without both eyes open.</summary>
+    public static (double X, double Y)? Predict(GazeModel m, FrameSample f, bool headCorrections)
+    {
+        if (!f.FaceFound || f.Left is not { Closed: false, Covered: false } l || f.Right is not { Closed: false, Covered: false } r) return null;
+        return Predict(m, l.OffsetH, r.OffsetH, l.OffsetV, r.OffsetV, (l.Openness + r.Openness) / 2,
+                       headCorrections ? f.FaceX : null, headCorrections ? f.Pitch : null);
     }
 
     // y = c0 + c1 * a + c2 * b, least squares. falls back to just the average for degenerate input

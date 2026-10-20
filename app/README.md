@@ -4,7 +4,7 @@ The C# Windows app (WPF). It starts the Python tracker, reads what it sends, and
 
 | | |
 |---|---|
-| `App.xaml(.cs)` | starts the app: the overlay, the Ctrl+Alt keys and camera-window keys, which calibration screen opens, running a calibration (eye check, then grid, then saving and fitting), and `Bubble()`, where the bubble goes |
+| `App.xaml(.cs)` | starts the app: the overlay, the Ctrl+Alt keys and camera-window keys, which calibration screen opens, running a calibration (grid, saving and fitting, then the eye check), the fine-tune's fitting again (`FitWithFineTune`), and `Bubble()`, where the bubble goes |
 | `AppPaths.cs` | where settings and calibrations are saved |
 | `Stats.cs` | percentiles, and `Spread` (how a number was spread over a recording), used everywhere |
 | `mouSEE.csproj` | the project. Its `<Using>` list is every folder below, so any file can use any part without a `using` line |
