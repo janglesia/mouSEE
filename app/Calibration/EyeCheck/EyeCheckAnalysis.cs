@@ -17,7 +17,7 @@ public static class EyeCheckAnalysis
     // work out a better value. EyeCheckAnalysisTests checks they still match the Python files
     public const double DefaultIrisHiddenRatio = 0.65;   // eye_extractor.py
     public const double DefaultLidsOpenOpenness = 0.26;  // eye_extractor.py
-    public const double DefaultCoveredContrast = 0.15;   // eye_extractor.py
+    public const double DefaultCoveredContrast = 0.01;   // eye_extractor.py | changed to 0.01 to not be used anymore
     public const double DefaultMaxPitch = 30.0;          // tracking_status.py
     public const double DefaultMaxYaw = 35.0;            // tracking_status.py
     public const double DefaultRestPitch = 0.0;          // tracking_status.py
