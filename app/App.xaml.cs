@@ -195,25 +195,32 @@ public partial class App : Application
 
     // calibrations fitted by an older version of the fit (GazeFit.Version), or not at all, get fitted again from their
     // recording, so improvements to the fit work without calibrating again. without a recording, only the old summaries
-    // are there, and only one that was never fitted gets fitted from them
+    // are there and they get fitted from those. recordings from before the vertical iris offset came from the eye corners
+    // (and the old summaries) measured it from the lids, which the tracker doesn't anymore, so up/down is fitted from the
+    // lids only for them
     private void FitOldCalibrations()
     {
         foreach (var p in Calibrations.All.ToList())
         {
             if ((p.GazeFit?.Version ?? 0) >= GazeFit.Version) continue;
 
-            var recorded = Calibrations.LoadRecording(p.Id)?.Gaze ?? [];
+            var recording = Calibrations.LoadRecording(p.Id);
+            var recorded = recording?.Gaze ?? [];
             if (recorded.Count > 0)
             {
                 var targets = recorded.Select(r => GazeTargetSummary.Of(
                     new CalibrationTarget(r.Index, r.X, r.Y, r.IsValidation, r.MoveHead, r.Pose), r.Frames)).ToList();
+                if (recording!.Version < CalibrationRecording.CornerOffsetVVersion)
+                    targets = targets.Select(t => t.WithoutVertical()).ToList();
                 var lean = recorded.FirstOrDefault(r => r.MoveHead);
                 if (GazeFit.Fit(targets, p.ScreenWidth, lean?.Frames, lean?.X ?? 0.5) is { } fit)
                     Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeTargets = targets, GazeFit = fit.Report, FineTune = null, FineTuneReport = null });
             }
-            else if (p.GazeTargets.Count > 0 && p.Gaze == new GazeModel() && GazeFit.Fit(p.GazeTargets, p.ScreenWidth) is { } fit)
+            else if (p.GazeTargets.Count > 0)
             {
-                Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeFit = fit.Report, FineTune = null, FineTuneReport = null });
+                var targets = p.GazeTargets.Select(t => t.WithoutVertical()).ToList();
+                if (GazeFit.Fit(targets, p.ScreenWidth) is { } fit)
+                    Calibrations.Update(p.Id, q => q with { Gaze = fit.Model, GazeTargets = targets, GazeFit = fit.Report, FineTune = null, FineTuneReport = null });
             }
         }
     }

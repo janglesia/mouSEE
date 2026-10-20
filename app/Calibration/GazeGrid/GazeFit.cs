@@ -19,8 +19,10 @@ public static partial class GazeFit
     // bump when the fit changes, so calibrations fitted before get fitted again from their recording (App.FitOldCalibrations).
     // 1: left/right and leaning. 2: up/down from the lids. 3: the looking down squeeze, and the head step.
     // 4: looking down isn't closed eyes (GazeTargetSummary.LooksDown), the bottom row counts again.
-    // 5: up/down can curve (y_arc, y_openness_sq), for the 20-point grid
-    public const int Version = 5;
+    // 5: up/down can curve (y_arc, y_openness_sq), for the 20-point grid.
+    // 6: the vertical iris offset comes from the eye corners. Older recordings measured it from the lids, they're fitted
+    // from the lids only (y_iris 0, GazeTargetSummary.WithoutVertical)
+    public const int Version = 6;
 
     // the defaults in gaze_model.py, to show how far off they were
     public const double DefaultK = 0.7;
@@ -72,7 +74,9 @@ public static partial class GazeFit
     private static double FittedY(GazeModel model, GazeTargetSummary t)
     {
         double open = t.Openness!.Median;
-        double y = model.YConst!.Value + model.YOpenness!.Value * open + model.YIris!.Value * t.OffsetV!.Median;
+        // no vertical offset: fitted from the lids only (an older recording), y_iris is 0 then
+        double iris = t.OffsetV is { } v ? (model.YIris ?? 0) * v.Median : 0;
+        double y = model.YConst!.Value + model.YOpenness!.Value * open + iris;
         if (model.YArc is { } arc && t.LeftH is not null && t.RightH is not null) y += arc * Math.Pow(Tan(model, t), 2);
         if (model.YOpennessSq is { } sq) y += sq * open * open;
         return y;

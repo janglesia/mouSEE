@@ -39,7 +39,7 @@ public static partial class GazeFit
             double squeeze = model.XSqueeze is { } s && t.Openness is not null ? s * tan * (t.Openness.Median - (model.OpennessRef ?? 0)) : 0;
             return (model.CenterX ?? 0.5) + (model.GainX ?? DefaultGainX) * tan + squeeze;
         }
-        bool yFitted = model.YOpenness is not null && dots.All(t => t.Openness is not null && t.OffsetV is not null);
+        bool yFitted = model.YOpenness is not null && dots.All(t => t.Openness is not null);
         double BaseY(GazeTargetSummary t) => FittedY(model, t);
         double Moved(GazeTargetSummary t) => t.FaceX!.Median - faceXRef;
         double Tilted(GazeTargetSummary t) => t.Pitch!.Median - pitchRef;

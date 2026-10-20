@@ -595,6 +595,62 @@ class FeatureVectorTest(unittest.TestCase):
         self.assertLess(left_iris_y, 0)
         self.assertLess(right_iris_y, 0)
 
+
+def shift_points(landmarks, indices, dx, dy):
+    moved = landmarks.copy()
+    for idx in indices:
+        moved[idx] = moved[idx] + (dx, dy)
+    return moved
+
+
+def iris_points(eye):
+    return (eye["iris"], *eye["iris_ring"])
+
+
+def lid_points(eye):
+    return (*eye["upper_lid"], *eye["lower_lid"])
+
+
+def face():
+    return build_eye("right", center=(0.65, 0.5), width=0.24, height=0.08) + \
+        build_eye("left", center=(0.35, 0.5), width=0.24, height=0.08)
+
+
+# v is measured from the eye corners, which stay put on the head, not from the lids, which follow the eye
+class VerticalOffsetTest(unittest.TestCase):
+    def v(self, landmarks):
+        eyes = extract_eyes(landmarks, 1000, 1000)
+        return eyes["left"]["offset"]["v"], eyes["right"]["offset"]["v"]
+
+    def test_iris_moving_up_past_the_corners_changes_v(self):
+        lm = shift_points(face(), iris_points(LEFT_EYE) + iris_points(RIGHT_EYE), 0, -0.03)
+        left, right = self.v(lm)
+        # 0.03 up, half the eye width is 0.12
+        self.assertAlmostEqual(left, -0.25, places=3)
+        self.assertAlmostEqual(right, -0.25, places=3)
+
+    def test_iris_and_lids_moving_up_together_still_changes_v(self):
+        # looking up: the lids follow the eye. measured from the lids this was 0, the gaze got lost
+        moved = iris_points(LEFT_EYE) + iris_points(RIGHT_EYE) + lid_points(LEFT_EYE) + lid_points(RIGHT_EYE)
+        left, right = self.v(shift_points(face(), moved, 0, -0.03))
+        self.assertAlmostEqual(left, -0.25, places=3)
+        self.assertAlmostEqual(right, -0.25, places=3)
+
+    def test_lids_moving_alone_doesnt_change_v(self):
+        lm = shift_points(face(), lid_points(LEFT_EYE) + lid_points(RIGHT_EYE), 0, 0.02)
+        left, right = self.v(lm)
+        self.assertAlmostEqual(left, 0.0, places=3)
+        self.assertAlmostEqual(right, 0.0, places=3)
+
+    def test_head_roll_doesnt_change_v(self):
+        lm = shift_points(face(), iris_points(LEFT_EYE) + iris_points(RIGHT_EYE), 0, -0.03)
+        upright = self.v(lm)
+        angle = np.radians(10)
+        rotation = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+        rolled = (lm - 0.5) @ rotation.T + 0.5
+        for before, after in zip(upright, self.v(rolled)):
+            self.assertAlmostEqual(before, after, places=3)
+
     def test_feature_vector_translation_invariance(self):
         """Test that feature vector is approximately invariant to translation."""
         # Original position

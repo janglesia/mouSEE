@@ -75,6 +75,10 @@ public sealed record GazeTargetSummary
             OffsetV = Spread.Of(usable.Select(f => (double?)(f.Left!.OffsetV + f.Right!.OffsetV) / 2)),
         };
     }
+
+    /// <summary>Without the vertical iris offsets, for a recording that measured them from the lids
+    /// (CalibrationRecording version 1): up/down then gets fitted from the lids only.</summary>
+    public GazeTargetSummary WithoutVertical() => this with { LeftV = null, RightV = null, OffsetV = null };
 }
 
 // ---- the raw frames, in their own file (app/Calibration/Saved/recordings/<id>.json) so the calibration file stays readable.

@@ -295,8 +295,6 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
             upper_lid = _mean_point(upper_lid_points)
             lower_lid = _mean_point(lower_lid_points)
 
-            lid_mid = (upper_lid + lower_lid) / 2.0
-
             # Actual geometric eyelid gap.
             lid_gap = _distance(upper_lid, lower_lid)
 
@@ -304,9 +302,11 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
             openness = lid_gap / eye_width
 
             # Horizontal: -1 far to one corner, 0 is centered, +1 far to the other corner
-            # Vertical: relative to the midpoint of the upper/lower lids
+            # Vertical: above or below the line between the corners, + is down. Measured from the corners, not the
+            # middle of the lids: the lids follow the eye up and down, so measured from them the iris hardly moved and
+            # up/down had to come from the lid gap alone (a few pixels, thrown off by any head tilt or squint)
             h_offset = float((iris_center - eye_center) @ u / half_width)
-            v_offset = float((iris_center - lid_mid) @ v / half_width)
+            v_offset = float((iris_center - eye_center) @ v / half_width)
 
             iris_to_center = iris_center - eye_center
             iris_angle = math.degrees(math.atan2(iris_to_center @ v, iris_to_center @ u))
@@ -557,7 +557,7 @@ def extract_feature_vector(eyes, timestamp=None):
 
     # Extract the feature vector components
     # iris_x: horizontal offset from eye center, normalized by half eye width (from extract_eyes)
-    # iris_y: vertical offset from eyelid midpoint, normalized by half eye width (from extract_eyes)
+    # iris_y: vertical offset from the line between the eye corners, normalized by half eye width (from extract_eyes)
     # eye_open: eyelid separation normalized by eye width (from extract_eyes)
     left_iris_x = float(left_eye["offset"]["h"])
     left_iris_y = float(left_eye["offset"]["v"])

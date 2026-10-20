@@ -172,17 +172,18 @@ A file that isn't valid JSON is skipped (the others still load) and left where i
 
 ### The recording
 
-`recordings/<same name>.json` has every frame of the calibration, so the math can be improved and run again on it without calibrating again. Nothing reads it while mouSEE runs.
+`recordings/<same name>.json` has every frame of the calibration, so the math can be improved and run again on it without calibrating again. It's only read when mouSEE starts, to fit calibrations from an older version of the fit again (see [GAZE-FIT.md](GAZE-FIT.md#fitting-again)).
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "eyeCheck": [ { "step": "CloseLeft", "try": 1, "passed": false, "problem": "Close your left eye all the way.", "frames": [] } ],
   "checkRound": [ { "trial": "OpenBoth", "frames": [] } ],
   "gaze": [ { "index": 0, "x": 0.08, "y": 0.08, "isValidation": false, "frames": [] } ]
 }
 ```
 
+- `version`: 2 since `offsetV` is measured from the eye corners, 1 before that, when it was from the middle of the lids. Version 1 recordings are fitted with up/down from the lids only, see [GAZE-FIT.md](GAZE-FIT.md#up-and-down)
 - `eyeCheck`: every try of every step, failed ones too, including the reaction time at the start
 - `checkRound`: each instruction of the check round
 - `gaze`: each grid target, the frames while its ring filled

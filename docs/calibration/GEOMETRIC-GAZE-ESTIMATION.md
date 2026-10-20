@@ -6,7 +6,7 @@ This method converts iris movement and maps it to a location on the screen.
 
 | Parameter | Description |
 | --- | --- |
-| `h`, `v` | Horizontal and vertical iris displacement normalized to eye size. |
+| `h`, `v` | Horizontal and vertical iris displacement from the middle of the eye corners, normalized to half the eye width. `v` used to be measured from the middle of the lids, see [GAZE-FIT.md](GAZE-FIT.md#up-and-down). |
 | `k_h`, `k_v` | Conversion factors from horizontal and vertical iris displacement to eyeball angular displacement. |
 | `center_x`, `center_y` | Location of the screen center relative to the person, normalized to screen size. Values range from 0 to 1. |
 | `gain_x`, `gain_y` | Distance from the person to the screen normalized to screen size. |
@@ -14,7 +14,7 @@ This method converts iris movement and maps it to a location on the screen.
 | `head_x_gain`, `head_x_ref` | Leaning left/right: `x` moves by `head_x_gain` for every 1.0 the middle of the face moves across the camera image, from `head_x_ref`. 0 = no correction. |
 | `x_squeeze`, `openness_ref` | Looking down squeezes left/right: `x` gets `x_squeeze * tan(θ_h) * (lid openness - openness_ref)` on top. 0 = off. |
 | `head_x_shrink`, `head_y_pitch`, `head_y_lean`, `pitch_ref` | From the head step of the calibration: leaning shrinks left/right (`head_x_shrink * tan(θ_h) * abs(face moved)`) and moves up/down (`head_y_lean * abs(face moved)`), tilting the head moves up/down (`head_y_pitch * (pitch - pitch_ref)`). The y ones only with a fitted up/down. 0 = off. |
-| `y_const`, `y_openness`, `y_iris` | Up/down from the lids instead of the angle: `y = y_const + y_openness * lid openness + y_iris * v`, both averaged over the open eyes. The iris barely moves up and down in `v`, the lids do. When `y_openness` and `y_iris` are 0 (not calibrated) `y` comes from `k_v` / `gain_y` below. |
+| `y_const`, `y_openness`, `y_iris` | Up/down from the lids instead of the angle: `y = y_const + y_openness * lid openness + y_iris * v`, both averaged over the open eyes. Calibrations recorded before `v` came from the eye corners have `y_iris` 0 (up/down from the lids only). When `y_openness` and `y_iris` are 0 (not calibrated) `y` comes from `k_v` / `gain_y` below. |
 | `y_arc`, `y_openness_sq` | Curves on the fitted up/down, 0 when the calibration didn't find them: `+ y_arc * tan(left/right angle)²` (the sides of the screen reading higher or lower than the middle) and `+ y_openness_sq * openness²` (stretched more at one end). See SAVED-CALIBRATIONS.md, "The curves". |
 
 All of these are fitted per person by the calibration, see [GAZE-FIT.md](GAZE-FIT.md). The values below are what's used without a calibration.

@@ -206,6 +206,55 @@ public class GazeFitTests
     }
 
     [Fact]
+    public void Up_down_without_the_vertical_offset_is_fitted_from_the_lids_only()
+    {
+        // recordings from when v was measured from the lids: the tracker measures it from the eye corners now, so it's left out
+        var targets = VerticalTargets(RealVertical).Select(t => t.WithoutVertical()).ToList();
+        var (model, report) = GazeFit.FitY(new GazeModel(), new GazeFitReport(), targets);
+
+        Assert.True(report.YFitted, report.YExplanation);
+        Assert.Equal(0, model.YIris);
+        Assert.True(model.YOpenness < 0);   // more open = higher on the screen
+        Assert.Equal(9, report.YTargets.Count);
+        Assert.Contains("lids are only", report.YExplanation);
+    }
+
+    [Fact]
+    public void Up_down_curves_without_the_vertical_offset_land_in_the_right_numbers()
+    {
+        // y follows openness² exactly, with no iris column the curve numbers move one place up in the fit
+        var targets = Enumerable.Range(0, 20).Select(i =>
+        {
+            double open = 0.24 + 0.006 * i;
+            double h = 0.1 * (i % 5 - 2);
+            return new GazeTargetSummary
+            {
+                Index = i, X = 0.5, Y = 4.0 - 20 * open + 25 * open * open + 0.3 * Math.Pow(Math.Tan(Math.Asin(h / 0.7)), 2),
+                Frames = 70, UsableFrames = 70, Openness = At(open), LeftH = At(h), RightH = At(h),
+            };
+        }).ToList();
+
+        var (model, report) = GazeFit.FitY(new GazeModel(), new GazeFitReport(), targets);
+
+        Assert.Equal("arc-and-uneven", report.YShape);
+        Assert.Equal(0, model.YIris);
+        Assert.Equal(0.3, model.YArc!.Value, 3);
+        Assert.Equal(25, model.YOpennessSq!.Value, 1);
+    }
+
+    [Fact]
+    public void Without_vertical_drops_only_the_vertical_offsets()
+    {
+        var t = VerticalTargets(RealVertical)[0] with { LeftH = At(-0.2), RightH = At(0.1) };
+        var stripped = t.WithoutVertical();
+        Assert.Null(stripped.OffsetV);
+        Assert.Null(stripped.LeftV);
+        Assert.Null(stripped.RightV);
+        Assert.Equal(t.Openness, stripped.Openness);
+        Assert.Equal(t.LeftH, stripped.LeftH);
+    }
+
+    [Fact]
     public void Up_down_needs_targets_in_two_rows()
     {
         var oneRow = VerticalTargets(RealVertical.Where(r => r.Y == 0.5).Concat(RealVertical.Where(r => r.Y == 0.5)));

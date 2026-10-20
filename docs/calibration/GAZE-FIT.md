@@ -50,13 +50,19 @@ The y corrections need the fitted up/down. Calibrations from before the head ste
 
 ## Up and down
 
-The iris barely moves up and down in the tracker's numbers: the vertical offset is measured from the middle between the lids, and the lids follow the eye, so most of it cancels out (0.035 from the top row to the bottom row, against 0.8 left to right). The lids themselves move though: more open looking up, less looking down (0.34 at the top row, 0.31 in the middle, 0.27 at the bottom in the first calibration with this). So up/down is fitted from those (`GazeFit.FitY`):
+Two things move when you look up or down: the iris, and the lids (more open looking up, less looking down: 0.34 at the top row, 0.31 in the middle, 0.27 at the bottom in the first calibration with this). Up/down is fitted from both (`GazeFit.FitY`):
 
 ```
 y = y_const + y_openness * lid openness + y_iris * vertical iris offset
 ```
 
 both averaged over the open eyes, a straight line through the grid targets. It needs at least 4 targets in at least 2 rows with lid openness measured, otherwise up/down stays at the defaults (`gazeFit.yExplanation` says why).
+
+The vertical iris offset is where the iris is above or below the line between the eye corners (`eye_extractor.py`), the same way left/right is measured from the corners. The corners stay put on the head, so the iris moving past them is the eye turning.
+
+It used to be measured from the middle between the lids. But the lids follow the eye, so that cancelled most of it out (0.035 from the top row to the bottom row, against 0.8 left to right). Up/down then came almost entirely from the lid openness: about 8 pixels of lid gap for the whole screen height, so a slight head tilt or a squint moved the bubble a third of the screen.
+
+Calibrations recorded before the change (recording `version` 1) have the old offset, which can't be mixed with the new one. When they're fitted again they leave it out and fit up/down from the lids only (`y_iris` 0, `GazeTargetSummary.WithoutVertical`). They keep working as before, but making a new calibration gets the better up/down.
 
 ## The curves
 
@@ -83,7 +89,7 @@ On the first accuracy test this took the up/down error from 24% of the screen he
 
 ## Fitting again
 
-Each fit says which version of the fit made it (`gazeFit.version`, `GazeFit.Version`). When mouSEE starts, every calibration fitted by an older version gets fitted again from its recording (`App.FitOldCalibrations`), so improvements to the fit apply to calibrations that were already made. Bump the version when the fit changes. A calibration without a recording only gets fitted if it never was.
+Each fit says which version of the fit made it (`gazeFit.version`, `GazeFit.Version`). When mouSEE starts, every calibration fitted by an older version gets fitted again from its recording (`App.FitOldCalibrations`), so improvements to the fit apply to calibrations that were already made. Bump the version when the fit changes. A calibration without a recording gets fitted again from the target summaries in its file, with up/down from the lids only (the summaries have the old vertical offset, see [Up and down](#up-and-down)).
 
 Calibrations made before the fit existed have the targets but empty gaze numbers, those get fitted the same way.
 

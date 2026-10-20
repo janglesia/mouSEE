@@ -105,6 +105,20 @@ public class SqueezeAndHeadFitTests
     }
 
     [Fact]
+    public void Head_step_is_fitted_without_the_vertical_offset_too()
+    {
+        // a recording from when v was measured from the lids: up/down is from the lids only, the head step still fits
+        var dots = HeadDots(Base, gain: 0.5, shrink: -6, yPitch: 0.02, yLean: 0.8).Select(t => t.WithoutVertical()).ToList();
+
+        var (model, report) = GazeFit.FitHead(Base, new GazeFitReport(), dots, 0.5, -15);
+
+        Assert.True(report.HeadFitted, report.HeadExplanation);
+        Assert.Equal(0.02, model.HeadYPitch!.Value, 3);
+        Assert.Equal(0.8, model.HeadYLean!.Value, 2);
+        Assert.True(report.HeadYErrorAfter < 0.005);
+    }
+
+    [Fact]
     public void Not_tilting_enough_leaves_the_tilt_out()
     {
         var dots = HeadDots(Base, gain: 0.5, shrink: -6, yPitch: 0.02, yLean: 0.8, tilt: 1);

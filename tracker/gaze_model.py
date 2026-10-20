@@ -59,9 +59,10 @@ class GazeParams:
     head_x_ref: float = 0.5
 
     # Up/down fitted by calibration: y = y_const + y_openness * lid openness + y_iris * vertical iris offset, both
-    # averaged over the usable eyes. The iris barely moves up and down in v (it's measured from the middle of the lids,
-    # which follow the eye), but the lids do: more open looking up, less looking down. When y_openness and y_iris are
-    # both 0 (not calibrated) y comes from the angle model below (k_v, gain_y) like before
+    # averaged over the usable eyes. v is where the iris is above or below the line between the eye corners, which stay
+    # put on the head, and the lids help too: more open looking up, less looking down. Calibrations whose recording
+    # measured v from the middle of the lids (before v came from the corners) are fitted from the lids alone, y_iris 0.
+    # When y_openness and y_iris are both 0 (not calibrated) y comes from the angle model below (k_v, gain_y) like before
     y_const: float = 0.5
     y_openness: float = 0.0
     y_iris: float = 0.0
