@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -5,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows.Controls;
+using app.Input;
 
 namespace app.UI;
 
@@ -16,8 +18,8 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52, VK_F = 0x46;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5, HOTKEY_CURSOR = 6;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52, VK_F = 0x46, VK_M = 0x4D;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -30,6 +32,7 @@ public partial class OverlayWindow : Window
     // ---- Tracker (shared, owned by App) ----
     private readonly TrackerClient _tracker = ((App)Application.Current).Tracker;
     private readonly SettingsService _settings = ((App)Application.Current).Settings;
+    private readonly CursorController _cursorController = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private long _lastUpdateMs, _fpsWindowStartMs;
     private int _framesInWindow;
@@ -73,6 +76,7 @@ public partial class OverlayWindow : Window
         _guide.LastRecenter = _app.RecenteredAt;
         _app.OffsetChanged += OnRecentered;
         _app.Calibrations.Changed += OnCalibrationsChanged;
+        _app.CursorMovementChanged += OnCursorMovementChanged;
 
         Loaded += async (_, _) =>
         {
@@ -91,6 +95,7 @@ public partial class OverlayWindow : Window
             _settings.Changed -= OnSettingsChanged;
             _app.OffsetChanged -= OnRecentered;
             _app.Calibrations.Changed -= OnCalibrationsChanged;
+            _app.CursorMovementChanged -= OnCursorMovementChanged;
             _tracker.MessageReceived -= OnMessage;
             _tracker.LogReceived -= OnLog;
             _tracker.Failed -= OnFailed;
@@ -100,6 +105,7 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_CALIBRATIONS);
             UnregisterHotKey(hwnd, HOTKEY_RECENTER);
             UnregisterHotKey(hwnd, HOTKEY_FINETUNE);
+            UnregisterHotKey(hwnd, HOTKEY_CURSOR);
         };
     }
 
@@ -121,13 +127,14 @@ public partial class OverlayWindow : Window
 
         // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus),
         // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations, Ctrl+Alt+R re-centers, Ctrl+Alt+F
-        // fine-tunes. global, so they work from any app. q, p, c, r and f in the camera window do the same, see App.xaml.cs
+        // fine-tunes, Ctrl+Alt+M toggles cursor movement. global, so they work from any app. q, p, c, r, f and m in the camera window do the same, see App.xaml.cs
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         RegisterHotKey(hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, VK_Q);
         RegisterHotKey(hwnd, HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT, VK_P);
         RegisterHotKey(hwnd, HOTKEY_CALIBRATIONS, MOD_CONTROL | MOD_ALT, VK_C);
         RegisterHotKey(hwnd, HOTKEY_RECENTER, MOD_CONTROL | MOD_ALT, VK_R);
         RegisterHotKey(hwnd, HOTKEY_FINETUNE, MOD_CONTROL | MOD_ALT, VK_F);
+        RegisterHotKey(hwnd, HOTKEY_CURSOR, MOD_CONTROL | MOD_ALT, VK_M);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -155,6 +162,10 @@ public partial class OverlayWindow : Window
                 handled = true;
                 ((App)Application.Current).StartAccuracyTest(); // the accuracy test is the fine-tune too
                 break;
+            case HOTKEY_CURSOR:
+                handled = true;
+                ((App)Application.Current).ToggleCursorMovement();
+                break;
         }
         return IntPtr.Zero;
     }
@@ -162,6 +173,8 @@ public partial class OverlayWindow : Window
     private void OnRecentered() => _guide.Recentered(_app.RecenteredAt);
 
     private void OnCalibrationsChanged() => _guide.Calibrated = HeadPosition.Of(_app.Calibrations.Active);
+
+    private void OnCursorMovementChanged() => UpdateStatusBar();
 
     private void UpdateGuide()
     {
@@ -245,6 +258,22 @@ public partial class OverlayWindow : Window
         Canvas.SetTop(GazeBubble, top);
 
         GazeBubble.Visibility = Visibility.Visible;
+
+        // Move the real cursor if cursor movement is enabled and tracking is good
+        if (_app.IsCursorMovementEnabled && _monitor.CanMoveCursor)
+        {
+            // The bubble center is at (x, y) in normalized coordinates (0-1 of canvas).
+            // Calculate the actual screen position of the bubble center.
+            // The canvas might not exactly match the screen size, so we need to map canvas coordinates to screen coordinates.
+            Point canvasPoint = new Point(x * GazeCanvas.ActualWidth, y * GazeCanvas.ActualHeight);
+            Point screenPoint = GazeCanvas.PointToScreen(canvasPoint);
+
+            // Convert screen pixel coordinates to normalized screen coordinates
+            double normalizedX = screenPoint.X / SystemParameters.PrimaryScreenWidth;
+            double normalizedY = screenPoint.Y / SystemParameters.PrimaryScreenHeight;
+
+            _cursorController.MoveToNormalized(normalizedX, normalizedY);
+        }
     }
 
 
@@ -288,12 +317,20 @@ public partial class OverlayWindow : Window
     private void UpdateStatusBar()
     {
         var (headline, hint) = TrackingMonitor.Describe(_monitor.State, _monitor.Reason);
+
+        // Add cursor movement indicator
+        if (_app.IsCursorMovementEnabled)
+        {
+            headline = "Cursor movement ON";
+            hint = hint == "" ? "Press Ctrl+Alt+M to stop" : $"{hint}. Press Ctrl+Alt+M to stop cursor movement.";
+        }
+
         StatusHeadline.Text = headline;
         StatusHint.Text = hint;
         StatusHint.Visibility = hint == "" ? Visibility.Collapsed : Visibility.Visible;
         StatusBar.Background = _monitor.State switch
         {
-            TrackingState.Tracking or TrackingState.Uncertain => Green,
+            TrackingState.Tracking or TrackingState.Uncertain => _app.IsCursorMovementEnabled ? Orange : Green,
             TrackingState.Starting or TrackingState.Paused => Grey,
             // closed eyes aren't an error, just nothing to track
             TrackingState.Recovering => Orange,

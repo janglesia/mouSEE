@@ -19,6 +19,10 @@ public partial class App : Application
     public HeadPosition? RecenteredAt { get; private set; }
     public event Action? OffsetChanged;
 
+    // cursor movement: follows the gaze when enabled, but only with a calibrated and fine-tuned setup
+    public bool IsCursorMovementEnabled { get; private set; }
+    public event Action? CursorMovementChanged;
+
     // options only the app uses, face_tracker.py rejects flags it doesn't know.
     // --calibration-preview opens only the grid screen, --calibrate starts a whole calibration,
     // --accuracy-test and --fine-tune both open the accuracy test, which is the fine-tune too
@@ -53,7 +57,7 @@ public partial class App : Application
             await RestartTrackerIfNeededAsync();
         };
 
-        // q, p, c, r and f pressed in the camera window
+        // q, p, c, r, f and m pressed in the camera window
         Tracker.MessageReceived += msg =>
         {
             if (msg.Type != "key") return;
@@ -64,6 +68,7 @@ public partial class App : Application
                 case "c": ShowCalibrations(); break;
                 case "r": StartRecenter(); break;
                 case "f": StartAccuracyTest(); break;
+                case "m": ToggleCursorMovement(); break;
             }
         };
 
@@ -308,6 +313,27 @@ public partial class App : Application
     }
 
     private string? _offsetCalibrationId;
+
+    /// <summary>Toggles cursor movement on/off. Only works if there's an active calibration with a fine-tune.</summary>
+    public void ToggleCursorMovement()
+    {
+        // Can only enable if we have a calibration that's been fine-tuned
+        bool canEnable = Calibrations.Active is not null && Calibrations.Active.FineTuneReport is not null;
+        if (!canEnable && !IsCursorMovementEnabled) return; // Don't enable without calibration + fine-tune
+
+        IsCursorMovementEnabled = !IsCursorMovementEnabled;
+        CursorMovementChanged?.Invoke();
+    }
+
+    /// <summary>Disables cursor movement (called when any key is pressed).</summary>
+    public void DisableCursorMovement()
+    {
+        if (IsCursorMovementEnabled)
+        {
+            IsCursorMovementEnabled = false;
+            CursorMovementChanged?.Invoke();
+        }
+    }
 
     /// <summary>Where the bubble goes for the tracker's x, y: the fine-tune of the calibration in use, then the re-center's shift.</summary>
     public (double X, double Y) Bubble(double x, double y) => FineTune.Bubble(x, y, Calibrations.Active?.FineTune, Offset);
