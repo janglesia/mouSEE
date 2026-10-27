@@ -1,0 +1,8 @@
+{
+  "total_samples": 388,
+  "train_samples": 310,
+  "test_samples": 78,
+  "test_size": 0.2,
+  "random_state": 42,
+  "recording_path": "app/Calibration/Saved/tests/2026-10-26_22-43-32.json"
+}
