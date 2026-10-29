@@ -55,6 +55,9 @@ cd tracker
 # Track up to 2 faces
 .venv/Scripts/python face_tracker.py --preview --num-faces 2
 
+# List the cameras that open, as one JSON line (for camera.index in app/Settings/settings.json)
+.venv/Scripts/python face_tracker.py --list-cameras
+
 # Use a model file from somewhere else
 .venv/Scripts/python face_tracker.py --preview --model C:/path/to/face_landmarker.task
 ```
@@ -68,7 +71,7 @@ Options can be combined in any order.
 ```bash
 cd app
 
-# Run with just the overlay (Ctrl+Alt+Q to quit)
+# Run with just the overlay (Ctrl+Alt+Q to quit, Ctrl+Alt+P to pause tracking)
 dotnet run
 
 # Run and also show the camera window
@@ -77,7 +80,15 @@ dotnet run -- --preview
 # Use a second camera
 dotnet run -- --preview --camera 1
 
-# Open the calibration screen instead of the overlay (doesn't start the tracker)
+# Start a new calibration straight away (the grid screen, then the eye check)
+dotnet run -- --calibrate
+
+# Open the accuracy test and fine-tune (where the bubble lands for dots all over the screen, then the last adjustments)
+dotnet run -- --accuracy-test
+# --fine-tune opens the same
+dotnet run -- --fine-tune
+
+# Open only the grid calibration screen instead of the overlay
 dotnet run -- --calibration-preview
 
 # Build without running (to check for errors)
@@ -87,7 +98,7 @@ dotnet build
 dotnet clean
 ```
 
-The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only option the app itself uses is `--calibration-preview`.
+The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from options meant for the app. The app passes all of its options on to the tracker, so every [tracker option](#tracker-options) works here too. The only options the app itself uses are `--calibrate`, `--calibration-preview`, `--accuracy-test` and `--fine-tune`, it doesn't pass those on.
 
 ## Tracker options
 
@@ -99,6 +110,10 @@ The `--` in `dotnet run -- --preview` separates options meant for `dotnet` from 
 --min-confidence X    detection threshold, 0-1 (default 0.5)
 --num-faces N         max faces to track (default 1)
 --model PATH          use a different model file
+--list-cameras        print the cameras that open as JSON and exit
+--calibration FILE    use a saved calibration (app/Calibration/Saved/*.json), see docs/calibration/SAVED-CALIBRATIONS.md
+--record-eyes FILE    also write every frame's eye measurements to a CSV, see docs/calibration/EYE-CALIBRATION.md
+--no-head-compensation  turn the head correction off (the app's "no head correction" mode), see docs/bubble/HEAD-MODES.md
 ```
 
 If the camera can't do what you ask for, it picks the closest mode it has.

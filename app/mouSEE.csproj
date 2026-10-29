@@ -12,4 +12,23 @@
     <Resource Include="assets\mouSEE-logo.png" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Speech" Version="10.0.13" />
+  </ItemGroup>
+
+  <!-- the app's folders, so every file can use every part without a using line each -->
+  <ItemGroup>
+    <Using Include="app.Tracker" />
+    <Using Include="app.Calibration.EyeCheck" />
+    <Using Include="app.Calibration.GazeGrid" />
+    <Using Include="app.Calibration.Saving" />
+    <Using Include="app.Calibration.Accuracy" />
+    <Using Include="app.Bubble" />
+    <Using Include="app.Bubble.HeadModes" />
+    <Using Include="app.Input" />
+    <Using Include="app.LookToAnswer" />
+    <Using Include="app.UI" />
+    <Using Include="app.Settings" />
+  </ItemGroup>
+
 </Project>

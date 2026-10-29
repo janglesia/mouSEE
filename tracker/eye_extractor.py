@@ -44,7 +44,7 @@ WINK_BLINK_DIFF = 0.08
 # normal open eye, so this has to come from the image. Contrast = std / mean brightness inside
 # the eye outline. From a recording: open eye 0.45-0.7, winked eye 0.2-0.66, hand over the
 # eye 0.02-0.07. Below this counts as covered.
-# per-person value, the eye check wizard should tune it. see docs/eye-calibration.md
+# per-person value, the eye check wizard should tune it. see docs/calibration/EYE-CALIBRATION.md
 COVERED_CONTRAST = 0.15
 
 # Closed eyes, from the image. Tilting the head up raises MediaPipe's blink score for the OPEN eye
@@ -53,8 +53,33 @@ COVERED_CONTRAST = 0.15
 # area / brightness of the rest of the eye. Open eye (dark iris on white) 0.1-0.5 at any head
 # angle, closed eye (lid, no iris) 0.7-1.1. Above this counts as closed. 0.6 gave single-frame false
 # alarms in dimmer light, 0.65 still caught 100% of head-up winks in the recording.
-# per-person value, the eye check wizard should tune it. see docs/eye-calibration.md
+# per-person value, the eye check wizard should tune it. see docs/calibration/EYE-CALIBRATION.md
 IRIS_HIDDEN_RATIO = 0.65
+
+# Lids this far apart (openness) mean the eye is open, whatever the iris check says. Glasses reflect the
+# screen right over the iris, and with a bright screen (the yellow calibration screen, a white web page)
+# an open eye then looks like it has no iris. The lid landmarks don't care about reflections.
+# Recordings: open 0.31-0.40 (0.27 with the head tilted up), the closed eye of a wink 0.16-0.24.
+# per-person value, the eye check wizard tunes it. see docs/calibration/EYE-CALIBRATION.md
+LIDS_OPEN_OPENNESS = 0.26
+
+# Lids this close together (openness) mean the eye is closed, whatever the iris check says. With both eyes shut the iris
+# ratio can stay low (0.51-0.62 in a recording, the lashes and the shadow under the lid are dark), so the iris check
+# missed them, but the lids were nearly shut (0.04). Open eyes stay above 0.24 even looking at the bottom of the screen,
+# and a winked eye at 0.16-0.24, so a wink still needs the iris check. At most LOOKING_DOWN_MIN_OPENNESS, so the
+# looking down rule below never undoes it.
+# per-person value, the eye check tunes it. see docs/calibration/EYE-CALIBRATION.md
+LIDS_SHUT_OPENNESS = 0.1
+
+# Looking down (at the bottom of the screen) brings both lids down about as far as a wink's closed lid, and the lid
+# covers part of the iris, so both eyes read as closed and the bubble had nothing to go on there. But a wink is one
+# eye, and looking down is both equally. In a recording the two lids were within 16% of each other looking anywhere
+# with the eyes open (smaller / bigger 0.84-1.0, the bottom row included), and at most 0.80 for a wink (0.57-0.80).
+# Both eyes closed has the lids nearly shut (0.04) and a high blink score (0.73), looking down 0.25 and at most 0.26.
+# So: both lids down by the same amount, not shut, and a low blink score = looking down, the eyes count as open.
+SAME_LIDS_RATIO = 0.82
+LOOKING_DOWN_MIN_OPENNESS = 0.15
+LOOKING_DOWN_MAX_BLINK = 0.45
 
 # Debugging, will probably change as needed
 H_THRESH = 0.12
@@ -251,6 +276,11 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
 
             # u = direction along the eye from left_corner to right_corner. v = perpendicular vector, vertical axis
             u = axis / eye_width
+
+            # Make both eyes use the same screen-space horizontal direction.
+            if u[0] < 0:
+                u = -u
+
             v = np.array([-u[1], u[0]])
             half_width = eye_width / 2.0
             eye_center = (left_corner + right_corner) / 2.0
@@ -273,8 +303,6 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
             upper_lid = _mean_point(upper_lid_points)
             lower_lid = _mean_point(lower_lid_points)
 
-            lid_mid = (upper_lid + lower_lid) / 2.0
-
             # Actual geometric eyelid gap.
             lid_gap = _distance(upper_lid, lower_lid)
 
@@ -282,9 +310,11 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
             openness = lid_gap / eye_width
 
             # Horizontal: -1 far to one corner, 0 is centered, +1 far to the other corner
-            # Vertical: relative to the midpoint of the upper/lower lids
+            # Vertical: above or below the line between the corners, + is down. Measured from the corners, not the
+            # middle of the lids: the lids follow the eye up and down, so measured from them the iris hardly moved and
+            # up/down had to come from the lid gap alone (a few pixels, thrown off by any head tilt or squint)
             h_offset = float((iris_center - eye_center) @ u / half_width)
-            v_offset = float((iris_center - lid_mid) @ v / half_width)
+            v_offset = float((iris_center - eye_center) @ v / half_width)
 
             iris_to_center = iris_center - eye_center
             iris_angle = math.degrees(math.atan2(iris_to_center @ v, iris_to_center @ u))
@@ -320,8 +350,11 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
                 closed = False
             elif iris_visibility is not None:
                 # the image shows directly whether the iris is there, more reliable than the blink
-                # score (which tilting the head throws off)
-                closed = iris_visibility > IRIS_HIDDEN_RATIO
+                # score (which tilting the head throws off). but not when the lids are clearly apart,
+                # then the "missing" iris is a reflection on glasses, see LIDS_OPEN_OPENNESS. and lids that are
+                # shut are closed even when the iris spot isn't bright, see LIDS_SHUT_OPENNESS
+                closed = ((iris_visibility > IRIS_HIDDEN_RATIO and openness < LIDS_OPEN_OPENNESS)
+                          or openness < LIDS_SHUT_OPENNESS)
 
             out[name] = {
                 "outline": (lm[list(e["outline"])].round(4).tolist()),
@@ -378,6 +411,16 @@ def extract_eyes(landmarks, width, height, blendshapes=None, gaze_smoother=None,
                             or eye["blink"] - other_eye["blink"] > WINK_BLINK_DIFF)
             if less_open and blink_higher:
                 eye["closed"] = True
+
+        # looking down isn't closed eyes, see SAME_LIDS_RATIO
+        left, right = out["left"], out["right"]
+        if (left["closed"] or right["closed"]) and not left["covered"] and not right["covered"]:
+            low, high = sorted((left["openness"], right["openness"]))
+            blink = max(left["blink"] or 0.0, right["blink"] or 0.0)
+            if (high > 0 and low / high >= SAME_LIDS_RATIO and low >= LOOKING_DOWN_MIN_OPENNESS
+                    and blink < LOOKING_DOWN_MAX_BLINK):
+                left["closed"] = right["closed"] = False
+                left["looking_down"] = right["looking_down"] = True
 
     # eye validator call, drop the eye if it looks like a glitch.
     # after the wink check because the validator treats closed eyes differently
@@ -524,7 +567,7 @@ def extract_feature_vector(eyes, timestamp=None):
 
     # Extract the feature vector components
     # iris_x: horizontal offset from eye center, normalized by half eye width (from extract_eyes)
-    # iris_y: vertical offset from eyelid midpoint, normalized by half eye width (from extract_eyes)
+    # iris_y: vertical offset from the line between the eye corners, normalized by half eye width (from extract_eyes)
     # eye_open: eyelid separation normalized by eye width (from extract_eyes)
     left_iris_x = float(left_eye["offset"]["h"])
     left_iris_y = float(left_eye["offset"]["v"])
@@ -612,31 +655,51 @@ def draw_eyes(view, eyes, frame_w):
 # Debugging stuff, will delete later
 def print_eye_debug(eyes):
     if eyes is None:
+        print("[EYES] No eye data", flush=True)
         return
 
-    left, right, gaze = eyes["left"], eyes["right"], eyes["gaze"]
+    left = eyes["left"]
+    right = eyes["right"]
+    gaze = eyes["gaze"]
 
     def state(eye):
-        return "CLOSED" if eye["closed"] else "OPEN  "
+        return "CLOSED" if eye.get("closed", False) else "OPEN  "
+
+    def offset_text(eye):
+        offset = eye.get("offset", {})
+        h = offset.get("h")
+        v = offset.get("v")
+
+        if h is None or v is None:
+            return "h=---   v=---"
+
+        return f"h={h:+.3f} v={v:+.3f}"
 
     if gaze["h"] is None:
-        gaze_text = "CLOSED"
+        gaze_text = "CLOSED / UNAVAILABLE"
     else:
-        gaze_text = f"{gaze['direction']:<7} h={gaze['h']:+.3f} v={gaze['v']:+.3f}"
+        gaze_text = (
+            f"{gaze['direction']:<7} "
+            f"h={gaze['h']:+.3f} v={gaze['v']:+.3f}"
+        )
 
-    left_h = left["offset"]["h"]
-    left_v = left["offset"]["v"]
-    right_h = right["offset"]["h"]
-    right_v = right["offset"]["v"]
-    binocular = gaze["binocular_error"]
-
-    if binocular["h"] is None:
+    binocular = gaze.get("binocular_error", {})
+    if binocular.get("h") is None:
         binocular_text = "-"
     else:
         binocular_text = (
             f"h={binocular['h']:.3f} "
             f"v={binocular['v']:.3f}"
         )
+
+    print(
+        f"[EYES] "
+        f"L={state(left)} ({offset_text(left)}) | "
+        f"R={state(right)} ({offset_text(right)}) | "
+        f"Gaze={gaze_text} | "
+        f"Binocular error={binocular_text}",
+        flush=True,
+    )
 
 
 def _main():

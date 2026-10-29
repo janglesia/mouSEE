@@ -19,7 +19,7 @@ RES_720   := --width 1280 --height 720
 RES_1080  := --width 1920 --height 1080
 RES_ARGS  := $(RES_$(RES))
 
-.PHONY: help setup build run tracker clean reset 360 480 720 1080
+.PHONY: help setup build run tracker test cameras clean reset 360 480 720 1080
 
 help:
 	@echo "make setup     create .venv, install packages, download model, build app"
@@ -28,7 +28,9 @@ help:
 	@echo "make tracker   run the tracker on its own with the camera window"
 	@echo "               (for both: add 360, 480, 720 or 1080 to pick a resolution, e.g. make run 720,"
 	@echo "                and pass other tracker options with ARGS, e.g. make run ARGS=\"--camera 1\")"
-	@echo "make clean     delete build output (app/bin, app/obj, __pycache__)"
+	@echo "make test      run the Python and C# unit tests"
+	@echo "make cameras   list the cameras the tracker can open (for camera.index in app/Settings/settings.json)"
+	@echo "make clean     delete build output (app/bin, app/obj, tests/app.Tests/bin and obj, __pycache__)"
 	@echo "make reset     delete everything generated and set it all up again"
 
 setup: $(INSTALLED) $(MODEL) build
@@ -55,12 +57,19 @@ run: setup
 tracker: $(INSTALLED) $(MODEL)
 	cd tracker && .venv/Scripts/python.exe face_tracker.py --preview $(RES_ARGS) $(ARGS)
 
+test: $(INSTALLED)
+	$(PY) -m unittest discover -s tests -v
+	dotnet test tests/app.Tests
+
+cameras: $(INSTALLED)
+	cd tracker && .venv/Scripts/python.exe face_tracker.py --list-cameras 2>/dev/null
+
 # Do nothing: these only exist so "make run 720" doesn't fail with "no rule to make target 720"
 360 480 720 1080:
 	@:
 
 clean:
-	rm -rf app/bin app/obj tracker/__pycache__
+	rm -rf app/bin app/obj tests/app.Tests/bin tests/app.Tests/obj tracker/__pycache__
 
 reset: clean
 	rm -rf $(VENV) $(MODEL)

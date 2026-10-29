@@ -8,32 +8,58 @@
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
-        SizeToContent="WidthAndHeight"
+        WindowState="Maximized"
+        SizeToContent="Manual"
         WindowStartupLocation="Manual">
-    <StackPanel>
-        <!-- what the user needs to know: is tracking working, and if not, what to do. colour set in code -->
-        <Border x:Name="StatusBar" Background="#616161" CornerRadius="4" Padding="10,6" Margin="0,0,0,4">
-            <StackPanel>
-                <TextBlock x:Name="StatusHeadline"
-                           Text="Starting camera..."
-                           Foreground="White"
-                           FontFamily="Segoe UI"
-                           FontSize="18"
-                           FontWeight="SemiBold"/>
-                <TextBlock x:Name="StatusHint"
-                           Text="This can take a few seconds"
-                           Foreground="White"
-                           FontFamily="Segoe UI"
-                           FontSize="13"/>
-            </StackPanel>
-        </Border>
-        <Border Background="#99000000" CornerRadius="4" Padding="8">
-            <TextBlock x:Name="DebugText"
-                       Text="Starting tracker..."
-                       Foreground="Lime"
-                       FontFamily="Consolas"
-                       FontSize="14"
-                       MinWidth="360"/>
-        </Border>
-    </StackPanel>
+    <Grid Background="Transparent">
+            <!-- Full-screen canvas for the gaze bubble -->
+        <Canvas x:Name="GazeCanvas"
+                IsHitTestVisible="False">
+            <Ellipse x:Name="GazeBubble"
+                    Width="24"
+                    Height="24"
+                    Stroke="White"
+                    StrokeThickness="3"
+                    Fill="Transparent"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"/>
+        </Canvas>
+        <StackPanel HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Margin="12">
+            <!-- what the user needs to know: is tracking working, and if not, what to do. colour set in code -->
+            <Border x:Name="StatusBar" Background="#616161" CornerRadius="4" Padding="10,6" Margin="0,0,0,4">
+                <StackPanel>
+                    <TextBlock x:Name="StatusHeadline"
+                            Text="Starting camera..."
+                            Foreground="White"
+                            FontFamily="Segoe UI"
+                            FontSize="18"
+                            FontWeight="SemiBold"/>
+                    <TextBlock x:Name="StatusHint"
+                            Text="This can take a few seconds"
+                            Foreground="White"
+                            FontFamily="Segoe UI"
+                            FontSize="13"/>
+                </StackPanel>
+            </Border>
+            <!-- where to sit: move back toward where calibration was, or re-center (PositionGuide) -->
+            <Border x:Name="GuideBar" Background="#B8860B" CornerRadius="4" Padding="10,6" Margin="0,0,0,4" Visibility="Collapsed">
+                <TextBlock x:Name="GuideText"
+                        Foreground="White"
+                        FontFamily="Segoe UI"
+                        FontSize="14"
+                        TextWrapping="Wrap"
+                        MaxWidth="420"/>
+            </Border>
+            <Border x:Name="DebugPanel" Background="#99000000" CornerRadius="4" Padding="8">
+                <TextBlock x:Name="DebugText"
+                        Text="Starting tracker..."
+                        Foreground="Lime"
+                        FontFamily="Consolas"
+                        FontSize="14"
+                        MinWidth="360"/>
+            </Border>
+        </StackPanel>
+        </Grid>
 </Window>

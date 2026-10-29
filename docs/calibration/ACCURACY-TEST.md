@@ -1,0 +1,15 @@
+# Testing accuracy and fine-tuning
+
+One run does both: it checks how close the bubble lands to where you look with the calibration in use, and uses the same dots to [fine-tune](../bubble/FINE-TUNE.md) it. Open it with **Test and fine-tune** in the calibrations window, **Ctrl+Alt+F** from any program, **f** in the camera window, or `make run ARGS="--accuracy-test"` (`--fine-tune` does the same). Begin and close by looking right or left, like the other screens. On the results, close your eyes for 1.5 s first, so looking at the dots isn't taken as an answer. Instructions are read out while the dots run, nothing is said once they're done.
+
+It used to be two separate runs, the accuracy test and a fine-tune with its own 20 dots. Both showed dots and recorded where the bubble landed, so one run is enough.
+
+- dots show up one by one: 20 sitting normally (5 columns by 4 rows: further out than the grid's columns and between its rows, so points in between get tested too, and 4 rows so the fine-tune can see the curves in up/down), then 3 leaning left and 3 leaning right (left, middle, right), and 3 with the head tilted up and 3 tilted down (top, middle, bottom). Leaning and tilting are guided like in the calibration, measured against how you sat in the first part. About a minute and a half
+- each dot: 0.8 s for the eyes to get there, then 1.5 s where the tracker's frames are recorded
+- the bubble isn't shown while it runs, otherwise you'd follow it instead of the dot
+- at the end every dot is drawn as a ring, with a line to a filled dot where the bubble landed (median of its frames, with the fine-tune and re-center in use). Yellow sitting normally, blue leaning left, pink leaning right, green head tilted up, orange head tilted down. Above it: what the fine-tune found, how far off left/right and up/down it was per way of sitting (`meanErrorX`, `meanErrorY`), which side it leans to, and the left/right error per column
+- with a calibration in use, two bubbles follow your eyes on the results: grey how it is now, yellow with the fine-tune. If the fine-tune changes something, look right to **keep the fine-tune** or left to close without it. If it doesn't, look right to run it again or left to close. The buttons do the same. Without a calibration it only tests
+
+The fine-tune from the dots: all of them are added to the calibration's targets and the gaze numbers are fitted again (the sitting normally ones like the grid's, the leaning and tilting ones like the head step's), then a correction on top is fitted on the sitting normally ones. See [FINE-TUNE.md](../bubble/FINE-TUNE.md).
+
+The test is saved in `app/Calibration/Saved/tests/<date>.json` (one line), with the report and every frame of every dot (same frames as a recording, plus `estimateX` / `estimateY`, where the bubble was), whether or not the fine-tune is kept. That's what to look at to decide what to improve: whether more calibration points would help, whether the leaning correction holds up, whether one side needs its own fit. The numbers are in `app/Calibration/Accuracy/AccuracyTest.cs`, the window is `AccuracyTestWindow`.
