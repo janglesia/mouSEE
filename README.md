@@ -102,6 +102,8 @@ mouSEE/
       SAVED-CALIBRATIONS.md      the calibration file, the recording, which one is used
       EYE-CALIBRATION.md         the eye check: its steps, the math, how it's built
       GAZE-FIT.md                how the grid and head step become the gaze numbers
+      CALIBRATION-SAMPLE-AGGREGATION.md
+                                 how target samples are aggregated, validated and recovered
       GEOMETRIC-GAZE-ESTIMATION.md  the math and every number in gaze_model.py
       ACCURACY-TEST.md           the accuracy test
       GRID-POINTS.md             where exactly the grid's points are
@@ -127,7 +129,7 @@ mouSEE/
 
 **Settings** are in `app/Settings/`, see [Settings](#settings).
 
-**GridWindow** (`app/Calibration/GazeGrid/`) is the grid screen: 20 points on the screen (5 columns by 4 rows), then the head step. The gaze is fitted to where your eyes were for each (`GazeFit`), see [docs/calibration/GAZE-FIT.md](docs/calibration/GAZE-FIT.md) and [docs/calibration/GRID-WINDOW-HISTORY.md](docs/calibration/GRID-WINDOW-HISTORY.md).
+**GridWindow** (`app/Calibration/GazeGrid/`) is the grid screen: 20 points on the screen (5 columns by 4 rows), then the head step. Frames for each target are aggregated into a stable summary and validated before fitting or saving. If validation fails, calibration retries first in full and then only the affected targets before showing a failure state. The gaze is fitted to where your eyes were for each (`GazeFit`), see [docs/calibration/GAZE-FIT.md](docs/calibration/GAZE-FIT.md), [docs/calibration/CALIBRATION-SAMPLE-AGGREGATION.md](docs/calibration/CALIBRATION-SAMPLE-AGGREGATION.md) and [docs/calibration/GRID-WINDOW-HISTORY.md](docs/calibration/GRID-WINDOW-HISTORY.md).
 
 **The eye check** (`app/Calibration/EyeCheck/`) is the second part of a new calibration, after the grid. It reads out instructions (close both eyes, then the same with your head tilted up and down), checks you did each one and repeats it if not, and works out when your eyes count as closed, against the open eyes the grid recorded. It only needs your eyes and head, no hands. Its questions (begin, continue) are answered by looking right for yes or left for no for 3 seconds, and so are the startup question and the grid screen's. Then it checks the new value with the tracker using it. See [docs/calibration/EYE-CALIBRATION.md](docs/calibration/EYE-CALIBRATION.md).
 
