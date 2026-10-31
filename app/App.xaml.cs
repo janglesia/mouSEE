@@ -148,22 +148,46 @@ public partial class App : Application
     {
         var window = new GridWindow();
 
+        // tracks recovery policy for this calibration
+        var calibrationSession = new CalibrationSession();
+
         // the frames while each target's ring fills, that's when the eyes are on it
-        var targets = new List<(CalibrationTarget Target, List<FrameSample> Frames)>();
+        var targets = new Dictionary<int, (CalibrationTarget Target, List<FrameSample> Frames)>();
         List<FrameSample>? capturing = null;
         var clock = new System.Diagnostics.Stopwatch();
+
+        // add for gaze feature validator
+        List<GazeTargetSummary> BuildSummaries(
+            IReadOnlyList<(CalibrationTarget Target, List<FrameSample> Frames)> captured) => captured.Select(t => GazeTargetSummary.Of(t.Target, t.Frames)).ToList();
+
+        static string FormatMissingFeatures(CalibrationFeatureValidation validation) => string.Join("\n", validation.Missing.GroupBy(m => m.TargetIndex).Select(group => $"Target {group.Key}: missing " + string.Join(", ", group.Select(m => m.Feature).Distinct())));
+
+        void FailCalibration(CalibrationFeatureValidation validation)
+        {
+            string details = FormatMissingFeatures(validation);
+
+            window.ShowCalibrationFailure("Calibration failed after three attempts.\n\n" + details + "\n\nPlease start calibration manually again.");
+        }
+        // end of addition
+
         void OnFrame(TrackerMessage msg)
         {
             if (msg.Type == "frame") capturing?.Add(FrameSample.From(msg, clock.ElapsedMilliseconds));
         }
         Tracker.MessageReceived += OnFrame;
         window.Closed += (_, _) => Tracker.MessageReceived -= OnFrame;
-        window.CalibrationStarted += () => targets.Clear(); // Try again starts over
+        window.CalibrationStarted += () =>
+        {
+            calibrationSession.StartFullCalibration();
+            targets.Clear();
+        };
+
         window.TargetCaptureStarted += target =>
         {
             capturing = [];
             clock.Restart();
-            targets.Add((target, capturing));
+            targets[target.Index] = (target, capturing);
+            // overwrite old entry w new target
         };
         window.TargetAccepted += _ => capturing = null;
 
@@ -182,14 +206,47 @@ public partial class App : Application
         {
             if (accepted is { } done && kept is not null) Dispatcher.BeginInvoke(() => kept(done));
         };
-        window.CalibrationAccepted += () =>
+        window.CalibrationAccepted += async () =>
         {
-            var summaries = targets.Select(t => GazeTargetSummary.Of(t.Target, t.Frames)).ToList();
-            var frames = targets.Select(t => new TargetRecording(t.Target.Index, t.Target.NormalizedX, t.Target.NormalizedY,
-                                                                 t.Target.IsValidation, t.Frames, t.Target.MoveHead, t.Target.Pose)).ToList();
+            var captured = targets.Values.OrderBy(t => t.Target.Index).ToList();
+            var summaries = BuildSummaries(captured);
+            // added for gaze feature validator
+            calibrationSession.SetTargets(summaries);
+            var result = await calibrationSession.AcceptAsync(
+                startFullCalibration: () =>
+                {
+                    window.BeginAutomaticFullCalibration();
+                    return Task.CompletedTask;
+                },
+                retryTargets: async failedIndexes =>
+                {
+                    var failedTargets = targets.Values.Where(t => failedIndexes.Contains(t.Target.Index)).Select(t => t.Target).ToList();
+
+                    await window.RunTargetRetryAsync(failedTargets);
+
+                    var retried = targets.Values.OrderBy(t => t.Target.Index).ToList();
+
+                    calibrationSession.SetTargets(BuildSummaries(retried));
+                },
+                showFailure: () =>
+                {
+                    var current = BuildSummaries(targets.Values.OrderBy(t => t.Target.Index).ToList());
+                    var validation = CalibrationFeatureValidator.Validate(current);
+                    FailCalibration(validation);
+                    return Task.CompletedTask;
+                },
+                save: () => Task.CompletedTask,
+                showPreview: () => Task.CompletedTask);
+
+            if(result.Action != CalibrationRecoveryAction.None){
+                return false;
+            }
+            // end of addition for gaze feature validator
+
+            var frames = captured.Select(t => new TargetRecording(t.Target.Index, t.Target.NormalizedX, t.Target.NormalizedY, t.Target.IsValidation, t.Frames, t.Target.MoveHead, t.Target.Pose)).ToList();
             // the gaze numbers fitted to the targets (left/right, and leaning left/right from the lean target).
             // none if there weren't enough targets
-            var lean = targets.FirstOrDefault(t => t.Target.MoveHead);
+            var lean = captured.FirstOrDefault(t => t.Target.MoveHead);
             var fit = GazeFit.Fit(summaries, SystemParameters.PrimaryScreenWidth, lean.Frames, lean.Target?.NormalizedX ?? 0.5);
             var gaze = fit?.Model ?? new GazeModel();
             if (id is not null)
@@ -225,7 +282,10 @@ public partial class App : Application
             }
             // a re-center belongs to the gaze numbers it was made with
             SetOffset(GazeOffset.None, null);
+
+            return true; // added for the gaze feature validator
         };
+
         ShowCalibrationWindow(window);
         return window;
     }

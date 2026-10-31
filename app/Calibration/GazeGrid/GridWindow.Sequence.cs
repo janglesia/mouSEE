@@ -101,6 +101,44 @@ public partial class GridWindow
         RefreshResult();
     }
 
+    // retries the target missing the feature only
+    public async Task RunTargetRetryAsync(IReadOnlyList<CalibrationTarget> failedTargets)
+    {
+        if(failedTargets.Count == 0){
+            throw new ArgumentException("At least one target is required.", nameof(failedTargets));
+        }
+
+        if(_phase != Phase.Result){
+            throw new InvalidOperationException("Target retry can only begin from the result phase.");
+        }
+
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+
+        _sessionStarted = true;
+        _sessionEnded = false;
+        _dwellMs = _settings.Current.Calibration.TargetDwellMs;
+
+        ShowPhase(Phase.Running);
+
+        try{
+            bool snap = true;
+
+            foreach(var target in failedTargets){
+                ProgressText.Text = $"Retrying target {target.Index}";
+                await RunTargetAsync(target, snap, _cts.Token);
+                snap = false;
+            }
+        }
+        catch(OperationCanceledException){
+            return;
+        }
+
+        _sessionEnded = true;
+        ShowPhase(Phase.Result);
+        RefreshResult();
+    }
+
     // shows "lean a little more / a little less / good" live until the head has been where the pose wants it for a moment,
     // and keeps showing it during the pose's dots. Without a reference (no face during the grid points) or if it takes
     // too long, it goes on anyway: the fit leaves out what didn't move enough

@@ -60,7 +60,7 @@ public partial class GridWindow : Window
         return list.ToArray();
     }
 
-    private enum Phase { Intro, Running, Result, Preview }
+    private enum Phase { Intro, Running, Result, Failure, Preview }
     private enum Level { Unknown, Good, Fair, Poor }
 
     private static readonly Brush Amber = new SolidColorBrush(Color.FromRgb(0xE0, 0xA4, 0x58));
@@ -119,11 +119,13 @@ public partial class GridWindow : Window
     /// <summary>All calibration targets are done. Fit the mapping now.</summary>
     public event Action? CalibrationCompleted;
     /// <summary>"Try it out" on the result screen: save and fit it, then the preview. Esc or closing before that means not accepted.</summary>
-    public event Action? CalibrationAccepted;
     public event Action? CalibrationCancelled;
 
     /// <summary>"Do the grid again" in the preview: what accepting saved has to be put back.</summary>
     public event Action? CalibrationDiscarded;
+
+    // changed for gaze feature calibration
+    public event Func<Task<bool>>? CalibrationAccepted;
 
     public GridWindow()
     {
@@ -243,10 +245,17 @@ public partial class GridWindow : Window
     private void AcceptButton_Click(object sender, RoutedEventArgs e) => Accept();
 
     // saves and fits it (App.StartGazeCalibration), then shows the preview: keep it, or do the grid again
-    private void Accept()
+    private async void Accept()
     {
+        if(CalibrationAccepted?.Invoke() is not { } acceptance){
+            return;
+        }
+
+        if(!await acceptance){
+            return;
+        }
+
         _sessionEnded = true; // so closing doesn't count as a cancel
-        CalibrationAccepted?.Invoke();
         _ = ShowPreviewAsync();
     }
 
@@ -270,6 +279,39 @@ public partial class GridWindow : Window
         ShowPhase(Phase.Intro);
     }
 
+    public void BeginAutomaticFullCalibration()
+    {
+        if(!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(BeginAutomaticFullCalibration);
+            return;
+        }
+
+        _sessionStarted = false;
+        _sessionEnded = false;
+        ShowPhase(Phase.Intro);
+        StartSequence();
+
+    }
+
+    public void CancelCalibration()
+    {
+        if(!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(CancelCalibration);
+            return;
+        }
+
+        _cts?.Cancel();
+
+        if(_sessionStarted && !_sessionEnded)
+        {
+            _sessionEnded = true;
+            CalibrationCancelled?.Invoke();
+        }
+
+        Close();
+    }
 
     // =====================================================================
     // Tracker frames
@@ -402,7 +444,7 @@ public partial class GridWindow : Window
     {
         _phase = phase;
         IntroPanel.Visibility = phase == Phase.Intro ? Visibility.Visible : Visibility.Collapsed;
-        ResultPanel.Visibility = phase == Phase.Result ? Visibility.Visible : Visibility.Collapsed;
+        ResultPanel.Visibility = phase is Phase.Result or Phase.Failure ? Visibility.Visible : Visibility.Collapsed; // changed to handle failure
         TargetLayer.Visibility = phase == Phase.Running ? Visibility.Visible : Visibility.Collapsed;
         ProgressPanel.Visibility = phase == Phase.Running ? Visibility.Visible : Visibility.Collapsed;
         PreviewLayer.Visibility = phase == Phase.Preview ? Visibility.Visible : Visibility.Collapsed;
@@ -411,6 +453,7 @@ public partial class GridWindow : Window
         EscHint.Text = phase switch
         {
             Phase.Result => "Esc to close without accepting",
+            Phase.Failure => "Calibration failed. Esc to close",
             Phase.Preview => "Esc to keep it and close",
             _ => "Esc to cancel",
         };
@@ -431,6 +474,10 @@ public partial class GridWindow : Window
             case Phase.Result:
                 _onChoice = yes => { if (yes) Accept(); else TryAgain(); };
                 Choice.Ask("Try it out", "Do the grid again");
+                break;
+            case Phase.Failure:
+                _onChoice = null;
+                Choice.Stop();
                 break;
             case Phase.Preview:
                 // nothing counts while the tracker restarts, the question comes once the new calibration runs (ShowPreviewAsync)
