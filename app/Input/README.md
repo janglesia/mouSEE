@@ -46,7 +46,15 @@ This is the infrastructure for cursor movement. It is not yet connected to gaze 
 - `CursorSettings.ShowGazeBubble` - Whether to show the gaze bubble overlay
 - `TrackingMonitor.CanMoveCursor` - Property that indicates when the cursor may move (only when tracking is stable)
 
-### Future Work
+## MouseClicker
 
-- Clicking (dwell or blink) will be added here
+`MouseClicker` performs a real Windows left-click with `SendInput`, at the current cursor position.
+It implements `IClickInjector.LeftClick()` so triggers (dwell, blink) and tests can use a fake.
+
+- Returns true only if Windows accepted both the press and the release.
+- `OverlayWindow.TryClick()` is the one gate: only while `IsCursorMovementEnabled && TrackingMonitor.CanMoveCursor`.
+- Temporary test hotkey: Ctrl+Alt+L (clicks after 1 s, so Ctrl+Alt are released first).
+- Windows ignores injected clicks on elevated windows unless mouSEE runs elevated.
+
+### Future Work
 - Cursor sensitivity smoothing will be implemented when gaze is connected

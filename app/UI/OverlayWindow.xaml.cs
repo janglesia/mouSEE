@@ -18,8 +18,8 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5, HOTKEY_CURSOR = 6;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52, VK_F = 0x46, VK_M = 0x4D;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5, HOTKEY_CURSOR = 6, HOTKEY_CLICK = 7;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52, VK_F = 0x46, VK_M = 0x4D, VK_L = 0x4C;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -33,6 +33,7 @@ public partial class OverlayWindow : Window
     private readonly TrackerClient _tracker = ((App)Application.Current).Tracker;
     private readonly SettingsService _settings = ((App)Application.Current).Settings;
     private readonly CursorController _cursorController = new();
+    private readonly IClickInjector _clicker = new MouseClicker();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private long _lastUpdateMs, _fpsWindowStartMs;
     private int _framesInWindow;
@@ -106,6 +107,7 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_RECENTER);
             UnregisterHotKey(hwnd, HOTKEY_FINETUNE);
             UnregisterHotKey(hwnd, HOTKEY_CURSOR);
+            UnregisterHotKey(hwnd, HOTKEY_CLICK);
         };
     }
 
@@ -135,6 +137,7 @@ public partial class OverlayWindow : Window
         RegisterHotKey(hwnd, HOTKEY_RECENTER, MOD_CONTROL | MOD_ALT, VK_R);
         RegisterHotKey(hwnd, HOTKEY_FINETUNE, MOD_CONTROL | MOD_ALT, VK_F);
         RegisterHotKey(hwnd, HOTKEY_CURSOR, MOD_CONTROL | MOD_ALT, VK_M);
+        RegisterHotKey(hwnd, HOTKEY_CLICK, MOD_CONTROL | MOD_ALT, VK_L); // Ctrl+Alt+L for left click
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -166,8 +169,25 @@ public partial class OverlayWindow : Window
                 handled = true;
                 ((App)Application.Current).ToggleCursorMovement();
                 break;
+            case HOTKEY_CLICK:
+                handled = true;
+                _ = ClickAfterDelayAsync();
+                break;
         }
+
         return IntPtr.Zero;
+    }
+
+    /// <summary>The one place a click is allowed: only while the cursor follows the gaze and tracking is good.</summary>
+    public bool TryClick() =>
+        _app.IsCursorMovementEnabled && _monitor.CanMoveCursor && _clicker.LeftClick();
+
+    // Temporary. The hotkey fires while Ctrl+Alt are still held, so wait for them to be let go
+    // or the target app would see Ctrl+Alt+click.
+    private async Task ClickAfterDelayAsync()
+    {
+        await Task.Delay(1000);
+        TryClick();
     }
 
     private void OnRecentered() => _guide.Recentered(_app.RecenteredAt);
