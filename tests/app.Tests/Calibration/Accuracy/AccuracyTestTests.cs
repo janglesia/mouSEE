@@ -69,6 +69,27 @@ public class AccuracyTestTests
     }
 
     [Fact]
+    public void Results_confirm_horizontal_and_vertical_gaze_direction()
+    {
+        var left = AccuracyTest.Result(new TestPoint(AccuracyTest.Normal, 0.1, 0.5), [Bubble(0.2, 0.5), Bubble(0.2, 0.5), Bubble(0.2, 0.5)]);
+        var center = AccuracyTest.Result(new TestPoint(AccuracyTest.Normal, 0.5, 0.5), [Bubble(0.5, 0.5), Bubble(0.5, 0.5), Bubble(0.5, 0.5)]);
+        var right = AccuracyTest.Result(new TestPoint(AccuracyTest.Normal, 0.9, 0.5), [Bubble(0.8, 0.5), Bubble(0.8, 0.5), Bubble(0.8, 0.5)]);
+        var top = AccuracyTest.Result(new TestPoint(AccuracyTest.Normal, 0.5, 0.1), [Bubble(0.5, 0.2), Bubble(0.5, 0.2), Bubble(0.5, 0.2)]);
+        var bottom = AccuracyTest.Result(new TestPoint(AccuracyTest.Normal, 0.5, 0.9), [Bubble(0.5, 0.8), Bubble(0.5, 0.8), Bubble(0.5, 0.8)]);
+
+        Assert.True(left.EstimateX!.Median < center.EstimateX!.Median);
+        Assert.True(center.EstimateX!.Median < right.EstimateX!.Median);
+
+        Assert.True(top.EstimateY!.Median < center.EstimateY!.Median);
+        Assert.True(center.EstimateY!.Median < bottom.EstimateY!.Median);
+
+        Assert.True(left.ErrorX > 0);
+        Assert.True(right.ErrorX < 0);
+        Assert.True(top.ErrorY > 0);
+        Assert.True(bottom.ErrorY < 0);
+    }
+
+    [Fact]
     public void Frame_keeps_where_the_bubble_was()
     {
         string json = """
