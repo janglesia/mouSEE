@@ -55,9 +55,43 @@ public class OneEuroFilterTests
         Assert.True(steady < quick, $"{steady} vs {quick}");
         Assert.Equal(GazeSmoothing.SteadiestCutoff, GazeSmoothing.Cutoff(0), 6);
         Assert.Equal(GazeSmoothing.QuickestCutoff, GazeSmoothing.Cutoff(1), 6);
-        Assert.Equal(Math.Sqrt(0.3 * 3.0), GazeSmoothing.Cutoff(0.5), 6);
+        Assert.Equal(Math.Sqrt(GazeSmoothing.SteadiestCutoff * GazeSmoothing.QuickestCutoff), GazeSmoothing.Cutoff(0.5), 6);
         // out of range is clamped
         Assert.Equal(GazeSmoothing.QuickestCutoff, GazeSmoothing.Cutoff(5), 6);
+    }
+
+    [Fact]
+    public void Shake_isnt_taken_for_movement()
+    {
+        var input = Resting(600).Select(p => p.X).ToList();
+        double Moved(OneEuroFilter filter)
+        {
+            var output = input.Select((x, i) => filter.Filter(x, i * Frame)).Skip(60).ToList();
+            return output.Zip(output.Skip(1), (a, b) => Math.Abs(a - b)).Sum();
+        }
+        double ignoring = Moved(new OneEuroFilter(0.05, 5, ignoreSpeedBelow: 1));
+        double not = Moved(new OneEuroFilter(0.05, 5));
+        Assert.True(ignoring < not * 0.5, $"{ignoring:0.000} vs {not:0.000}");
+    }
+
+    [Fact]
+    public void A_move_thats_mostly_sideways_goes_straight_instead_of_in_an_L()
+    {
+        var smoothing = new GazeSmoothing(0.25);
+        Run(smoothing, Enumerable.Repeat((0.3, 0.3), 60));
+        var after = Run(smoothing, Enumerable.Repeat((0.6, 0.33), 30), start: 60 * Frame);
+        // within 200 ms the small up/down part is most of the way there too
+        Assert.True(after[11].Y > 0.327, $"after 200 ms: {after[11].Y:0.000}");
+    }
+
+    [Fact]
+    public void A_small_deliberate_move_still_arrives()
+    {
+        // 5% of the screen, at the default setting
+        var smoothing = new GazeSmoothing(0.5);
+        Run(smoothing, Resting(60, x: 0.2));
+        var after = Run(smoothing, Resting(60, x: 0.25, seed: 2), start: 60 * Frame);
+        Assert.True(after[^1].X > 0.24, $"after 1 s: {after[^1].X:0.000}");
     }
 
     [Fact]
