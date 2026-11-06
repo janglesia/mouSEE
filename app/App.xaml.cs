@@ -149,7 +149,7 @@ public partial class App : Application
         var window = new GridWindow();
 
         // tracks recovery policy for this calibration
-        var calibrationSession = new CalibrationSession();
+        var calibrationSession = new CalibrationSession(GridWindow.AllTargetIndexes);
 
         // the frames while each target's ring fills, that's when the eyes are on it
         var targets = new Dictionary<int, (CalibrationTarget Target, List<FrameSample> Frames)>();
@@ -160,13 +160,12 @@ public partial class App : Application
         List<GazeTargetSummary> BuildSummaries(
             IReadOnlyList<(CalibrationTarget Target, List<FrameSample> Frames)> captured) => captured.Select(t => GazeTargetSummary.Of(t.Target, t.Frames)).ToList();
 
-        static string FormatMissingFeatures(CalibrationFeatureValidation validation) => string.Join("\n", validation.Missing.GroupBy(m => m.TargetIndex).Select(group => $"Target {group.Key}: missing " + string.Join(", ", group.Select(m => m.Feature).Distinct())));
+        IReadOnlyDictionary<int, IReadOnlyList<FrameSample>> CapturedFrames() =>
+            targets.ToDictionary(t => t.Key, t => (IReadOnlyList<FrameSample>)t.Value.Frames);
 
         void FailCalibration(CalibrationFeatureValidation validation)
         {
-            string details = FormatMissingFeatures(validation);
-
-            window.ShowCalibrationFailure("Calibration failed after three attempts.\n\n" + details + "\n\nPlease start calibration manually again.");
+            window.ShowCalibrationFailure("Calibration failed after three attempts.\n\n" + CalibrationFeedback.Explain(validation, CapturedFrames()));
         }
         // end of addition
 
@@ -180,6 +179,16 @@ public partial class App : Application
         {
             calibrationSession.StartFullCalibration();
             targets.Clear();
+        };
+
+        // the check, before the result screen shows: it says what's wrong before anything is accepted
+        window.CalibrationCompleted += () =>
+        {
+            var current = BuildSummaries(targets.Values.OrderBy(t => t.Target.Index).ToList());
+            calibrationSession.SetTargets(current);
+            var validation = calibrationSession.Validate();
+            string nextTry = calibrationSession.NextRecovery().Action == CalibrationRecoveryAction.RetryTargets ? "Redo the missed dots" : "Do it again";
+            window.SetCaptureCheck(validation.IsValid ? null : CalibrationFeedback.Explain(validation, CapturedFrames()), nextTry, CalibrationFeedback.HeadNote(current));
         };
 
         window.TargetCaptureStarted += target =>
@@ -222,17 +231,25 @@ public partial class App : Application
                 {
                     var failedTargets = targets.Values.Where(t => failedIndexes.Contains(t.Target.Index)).Select(t => t.Target).ToList();
 
+                    if (failedTargets.Count == 0)
+                    {
+                        FailCalibration(calibrationSession.Validate());
+                        return;
+                    }
+
                     await window.RunTargetRetryAsync(failedTargets);
 
                     var retried = targets.Values.OrderBy(t => t.Target.Index).ToList();
 
                     calibrationSession.SetTargets(BuildSummaries(retried));
+
+                    // that was the last try: still short and it's the failure screen, no third round of accepting
+                    var afterRetry = calibrationSession.Validate();
+                    if (!afterRetry.IsValid && window.IsVisible) FailCalibration(afterRetry);
                 },
                 showFailure: () =>
                 {
-                    var current = BuildSummaries(targets.Values.OrderBy(t => t.Target.Index).ToList());
-                    var validation = CalibrationFeatureValidator.Validate(current);
-                    FailCalibration(validation);
+                    FailCalibration(calibrationSession.Validate());
                     return Task.CompletedTask;
                 },
                 save: () => Task.CompletedTask,

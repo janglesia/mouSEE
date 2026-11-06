@@ -43,6 +43,7 @@ defines the validation contract:
 - Normal targets require `LeftH`, `RightH`, and `Openness`.
 - Pose targets additionally require `FaceX` and `Pitch`.
 - Every target must have at least `GazeFit.MinUsableFrames` usable frames.
+- All 36 targets of a run must be there (`GridWindow.AllTargetIndexes`).
 
 Validation returns target indexes and the missing feature names so the failure
 message can identify the affected targets.
@@ -54,8 +55,35 @@ defines the three-stage recovery policy:
 
 1. The first validation failure starts a complete calibration again.
 2. The second validation failure retries only the affected target indexes.
-3. A failure after the target retry displays a failure state and does not
-   proceed to saving or preview.
+3. A failure after the target retry goes straight to the failure screen and does
+   not proceed to saving or preview.
+
+Only these automatic restarts count as attempts. Choosing to start again (the
+intro, "Do the grid again", or the failure screen) starts the steps over.
+
+A retried head-step dot asks for the head position again, on screen and silently,
+before it fills. Without that it would be recorded sitting normally and teach the
+fit the wrong thing.
+
+### Feedback
+
+The check runs as soon as a run ends, before the result screen
+(`CalibrationCompleted` in `App.StartGazeCalibration`), so the screen can't say
+everything was captured and then fail. If it fails, the screen says what went wrong
+and where, from
+[`CalibrationFeedback.cs`](../../app/Calibration/GazeGrid/CalibrationFeedback.cs),
+for example "Your eyes looked closed. Keep both open while each ring fills, and
+blink between dots. (2 dots: bottom left, bottom middle)". It works out the cause
+from the failed dots' frames: too few frames from the camera, the face out of view,
+eyes not found, eyes covered or eyes closed.
+
+Nothing here is spoken. Everything can be answered by looking: on a failed check,
+right takes the next try and left closes. On the failure screen, right starts again
+and left closes.
+
+A head position that wasn't reached adds a note to the result screen but doesn't
+fail the check. Someone who can't move their head that far still has to be able to
+finish, and the fit already leaves out what didn't move enough.
 
 [`CalibrationSession.cs`](../../app/Calibration/GazeGrid/CalibrationSession.cs)
 holds the attempt state, target summaries, validation result, and callback
@@ -103,14 +131,7 @@ Application build succeeded
 The automated session tests do not start a real WPF window or webcam tracker.
 They verify the recovery coordinator through callbacks. A manual run is still
 needed to verify tracker timing, real closed-eye frames, target presentation,
-and the visual failure state.
-
-The current result panel in
-[`GridWindow.xaml`](../../app/Calibration/GazeGrid/GridWindow.xaml) still
-contains the normal **Try it out** and **Do the grid again** buttons while the
-result panel is reused for `Phase.Failure`. Those controls should be hidden or
-disabled in the failure phase before treating the failure-state UX as
-complete.
+the feedback text on screen, and answering the failure screen by looking.
 
 The worktree also had trailing-whitespace reports in
 [`App.xaml.cs`](../../app/App.xaml.cs) and
@@ -133,5 +154,5 @@ Verify that:
    on the first failure.
 2. A second failure retries only the affected target indexes.
 3. A third failure shows the failure message, does not save a calibration, and
-   requires a manual restart.
+   can be answered by looking: right starts again, left closes.
 4. A successful validation proceeds to fitting, saving, and preview.

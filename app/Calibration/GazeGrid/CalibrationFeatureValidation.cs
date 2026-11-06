@@ -12,8 +12,15 @@ public sealed record CalibrationFeatureValidation(IReadOnlyList<MissingCalibrati
 }
 
 public static class CalibrationFeatureValidator{
-    public static CalibrationFeatureValidation Validate(IReadOnlyList<GazeTargetSummary> targets){
+    public const string NotCaptured = "NotCaptured";
+
+    // expected: the targets a whole run should have, any that aren't there count as failed
+    public static CalibrationFeatureValidation Validate(IReadOnlyList<GazeTargetSummary> targets, IReadOnlyCollection<int>? expected = null){
         var missing = new List<MissingCalibrationFeature>();
+
+        foreach(int index in (expected ?? []).Except(targets.Select(t => t.Index))){
+            missing.Add(new MissingCalibrationFeature(index, 0, 0, null, NotCaptured));
+        }
 
         foreach(var target in targets){
             if(target.UsableFrames < GazeFit.MinUsableFrames){

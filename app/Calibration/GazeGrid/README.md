@@ -14,5 +14,6 @@ Part 1 of a calibration: where on the screen your eyes point. The mouSEE logo go
 | `GazeFit.UpDown.cs` | up/down, with the curves when they help (`FitY`) |
 | `GazeFit.Head.cs` | leaning and tilting, from the head step (`FitHead`) |
 | `GazeFitReport.cs` | what the fit found, saved with the calibration |
+| `CalibrationFeedback.cs` | what to show when a calibration falls short: what went wrong at which dots and what to do, and head positions that weren't reached |
 
 The numbers end up in `tracker/gaze_model.py`, which uses them every frame. Tests: `tests/app.Tests/Calibration/GazeGrid/`.

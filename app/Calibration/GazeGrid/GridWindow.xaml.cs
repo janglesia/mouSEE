@@ -43,6 +43,10 @@ public partial class GridWindow : Window
     // be in between, so old and new recordings number them the same
     private static readonly int HeadStepFirstIndex = Targets.Length + 4;
 
+    /// <summary>The index of every target a whole run shows: the grid's and the head step's.</summary>
+    public static readonly IReadOnlyList<int> AllTargetIndexes =
+        Enumerable.Range(0, Targets.Length).Concat(Enumerable.Range(HeadStepFirstIndex, HeadPose.Step.Length)).ToList();
+
     private static (double X, double Y)[] BuildTargets()
     {
         double[] Axis(int count) => Enumerable.Range(0, count)
@@ -77,6 +81,11 @@ public partial class GridWindow : Window
     private readonly SettingsService _settings = ((App)Application.Current).Settings;
     private readonly Speaker _speaker = new(); // for the lean step's instruction
     private int _dwellMs; // Calibration.TargetDwellMs, read when a run starts
+
+    // from the backend's check of what a run captured, see SetCaptureCheck
+    private string? _captureProblem;
+    private string? _headNote;
+    private string _acceptLabel = "Try it out";
 
     // the head step is guided: how far to lean and tilt is measured against how the head sat during the grid points
     private readonly List<(double FaceX, double Pitch)> _restHead = [];
@@ -449,6 +458,10 @@ public partial class GridWindow : Window
         ProgressPanel.Visibility = phase == Phase.Running ? Visibility.Visible : Visibility.Collapsed;
         PreviewLayer.Visibility = phase == Phase.Preview ? Visibility.Visible : Visibility.Collapsed;
         PreviewBar.Visibility = phase == Phase.Preview ? Visibility.Visible : Visibility.Collapsed;
+        // a failed check: accepting is what starts the next try, and looking left closes. A final failure: only starting again
+        AcceptButton.Content = _acceptLabel;
+        AcceptButton.Visibility = phase == Phase.Failure ? Visibility.Collapsed : Visibility.Visible;
+        AgainButton.Visibility = phase == Phase.Result && _captureProblem is not null ? Visibility.Collapsed : Visibility.Visible;
         Cursor = phase == Phase.Running ? Cursors.None : Cursors.Arrow;
         EscHint.Text = phase switch
         {
@@ -472,12 +485,13 @@ public partial class GridWindow : Window
                 Choice.Ask("Begin the calibration", "Cancel");
                 break;
             case Phase.Result:
-                _onChoice = yes => { if (yes) Accept(); else TryAgain(); };
-                Choice.Ask("Try it out", "Do the grid again");
+                bool failedCheck = _captureProblem is not null;
+                _onChoice = yes => { if (yes) Accept(); else if (failedCheck) Close(); else TryAgain(); };
+                Choice.Ask(_acceptLabel, failedCheck ? "Close" : "Do the grid again");
                 break;
             case Phase.Failure:
-                _onChoice = null;
-                Choice.Stop();
+                _onChoice = yes => { if (yes) TryAgain(); else Close(); };
+                Choice.Ask("Start again", "Close");
                 break;
             case Phase.Preview:
                 // nothing counts while the tracker restarts, the question comes once the new calibration runs (ShowPreviewAsync)
