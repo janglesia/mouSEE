@@ -114,6 +114,7 @@ mouSEE/
       RE-CENTER.md               re-centering
       FINE-TUNE.md               fine-tuning, and why the curves
       WHERE-TO-SIT.md            the where-to-sit hints
+      SMOOTHING.md               smoothing the bubble (the 1 euro filter)
       HEAD-MODES.md              the head modes and the nudge
   tests/
     test_*.py                  Python tests, one per tracker file

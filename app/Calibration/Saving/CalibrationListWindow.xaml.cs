@@ -32,6 +32,8 @@ public partial class CalibrationListWindow : Window
             _app.Calibrations.Changed -= Refresh;
             _app.Settings.Changed -= OnSettingsChanged;
         };
+        SmoothingSliders.Children.Add(new SettingSlider(SettingsCatalog.Find("cursor.sensitivity"), _app.Settings));
+        ShowSmoothing();
         Refresh();
         BuildHeadModes();
     }
@@ -128,6 +130,7 @@ public partial class CalibrationListWindow : Window
     {
         if (old.Calibration != now.Calibration) AskCheckBox.IsChecked = now.Calibration.AskWhenMissing;
         if (old.Head.Mode != now.Head.Mode) ShowHeadMode(now.Head.Mode);
+        if (old.Cursor.Smoothing != now.Cursor.Smoothing) ShowSmoothing();
     }
 
     private void ProfileList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateButtons();
@@ -166,6 +169,19 @@ public partial class CalibrationListWindow : Window
                 : $"Delete \"{row.Name}\"?";
         if (MessageBox.Show(this, question, "Delete calibration", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             _app.Calibrations.Delete(row.Id);
+    }
+
+    private void ShowSmoothing()
+    {
+        bool on = _app.Settings.Current.Cursor.Smoothing;
+        SmoothingCheckBox.IsChecked = on;
+        SmoothingPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SmoothingCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        bool on = SmoothingCheckBox.IsChecked == true;
+        _app.Settings.Update(s => s with { Cursor = s.Cursor with { Smoothing = on } });
     }
 
     private void AskCheckBox_Click(object sender, RoutedEventArgs e)

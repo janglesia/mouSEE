@@ -51,7 +51,8 @@ The Ctrl+Alt ones work from any program. Plain q, p, c and r only work while the
 
 | Setting | Default | Allowed | When | Used | What it does |
 |---------|---------|---------|------|------|--------------|
-| `cursor.sensitivity` | `0.5` | 0 to 1 | right away | not yet, the gaze filter will | Low keeps the cursor steady but it lags a bit, high follows faster but shakes more. |
+| `cursor.smoothing` | `true` | `true` / `false` | right away | yes | Takes the shake out of the bubble while your eyes rest, still quick when they jump (a 1 euro filter). Also in the calibrations window. See [SMOOTHING.md](bubble/SMOOTHING.md). |
+| `cursor.sensitivity` | `0.5` | 0 to 1 | right away | yes, with smoothing on | Low keeps the bubble steady but small moves are followed a bit later, high follows faster but shakes more. Big jumps are quick either way. Also a slider in the calibrations window. |
 | `cursor.showGazeBubble` | `true` | `true` / `false` | right away | yes | The circle where mouSEE thinks you're looking. |
 
 ### Clicking
@@ -113,7 +114,7 @@ Tuning, most people won't need to touch these.
 ```jsonc
 {
   "camera": { "index": 0, "resolution": "1080p", "fps": 60, "showPreview": false },
-  "cursor": { "sensitivity": 0.5, "showGazeBubble": true },
+  "cursor": { "smoothing": true, "sensitivity": 0.5, "showGazeBubble": true },
   "clicking": { "method": "dwell", "dwellMs": 1000, "dwellRadiusPx": 50 },
   "tracking": { "paused": false },
   "head": { "mode": "cancel", "nudgeStrength": 1.5, "nudgeDeadZone": 1, "nudgeSettleMs": 600, "nudgeReleasePercent": 20 },

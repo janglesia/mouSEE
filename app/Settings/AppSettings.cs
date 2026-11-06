@@ -60,7 +60,10 @@ public static class ResolutionExtensions
 
 public sealed record CursorSettings
 {
-    [Setting("Sensitivity", "Low keeps the cursor steady but it follows your eyes a bit later. High follows faster but shakes more.", Min = 0, Max = 1, Step = 0.05)]
+    [Setting("Smooth the bubble", "Takes the shake out of the bubble while your eyes rest on a spot, and still follows straight away when they jump somewhere else (a 1 euro filter). Sensitivity sets how much.")]
+    public bool Smoothing { get; init; } = true;
+
+    [Setting("Sensitivity", "With smoothing on: low keeps the bubble steady but it follows your eyes a bit later, high follows faster but shakes more.", Min = 0, Max = 1, Step = 0.05)]
     public double Sensitivity { get; init; } = 0.5;
 
     [Setting("Show gaze bubble", "Draws a circle where mouSEE thinks you're looking.")]

@@ -29,6 +29,7 @@ Open it with **Ctrl+Alt+C** (from any program) or **c** in the camera window.
 - **Use this one** (or double-click) switches to the selected one
 - **Delete** deletes the selected one, after asking
 - **Test and fine-tune** tests how accurate the calibration in use is, and fine-tunes it from the same dots if you want, see [Testing accuracy and fine-tuning](ACCURACY-TEST.md)
+- **Smoothing** turns smoothing the bubble on or off, with its sensitivity, see [SMOOTHING.md](../bubble/SMOOTHING.md)
 - **What your head does** picks one of the three head modes: Eyes only, Eyes + head nudge, or Eyes + head nudge without the head correction. See [HEAD-MODES.md](../bubble/HEAD-MODES.md)
 - **New calibration** starts a new one (the grid screen, then the eye check), it's saved and used once the grid is kept
 - if a calibration was made on a screen with a different size, it says so. It still works but won't line up
