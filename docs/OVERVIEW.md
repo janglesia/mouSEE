@@ -47,8 +47,9 @@ Every frame goes through these steps. Each one is a single place in the code:
 | 3 | Turn that into a point on the screen with the calibration's numbers, correcting for leaning and tilting | `tracker/gaze_model.py` |
 | 4 | Is tracking OK right now, or lost, and why | `tracker/tracking_status.py`, then `app/Tracker/TrackingMonitor.cs` decides when it counts |
 | 5 | The **fine-tune**'s last correction, then the **re-center**'s shift | `App.Bubble()` in `app/App.xaml.cs`, with `app/Bubble/FineTune.cs` |
-| 6 | The **head nudge**, if a nudge head mode is on | `app/Bubble/HeadModes/HeadNudge.cs` |
-| 7 | Draw the bubble, and the where-to-sit hint if you moved too far | `app/UI/OverlayWindow.xaml.cs` |
+| 6 | **Smoothing** (a 1 euro filter), if it's on: steady while the eyes rest, quick when they jump | `app/Bubble/OneEuroFilter.cs` |
+| 7 | The **head nudge**, if a nudge head mode is on | `app/Bubble/HeadModes/HeadNudge.cs` |
+| 8 | Draw the bubble, and the where-to-sit hint if you moved too far | `app/UI/OverlayWindow.xaml.cs` |
 
 ## What the calibration words mean
 
@@ -130,11 +131,11 @@ The code is grouped by feature: each folder has the logic and the window for one
 | [RE-CENTER.md](bubble/RE-CENTER.md) | re-centering |
 | [FINE-TUNE.md](bubble/FINE-TUNE.md) | fine-tuning, and why the curves |
 | [WHERE-TO-SIT.md](bubble/WHERE-TO-SIT.md) | the where-to-sit hints |
+| [SMOOTHING.md](bubble/SMOOTHING.md) | smoothing the bubble, on or off, and the sensitivity |
 | [HEAD-MODES.md](bubble/HEAD-MODES.md) | the head modes and the nudge |
 
 ## Not built yet
 
 - **Moving the cursor and clicking** (dwell or blink). The settings for it already exist (`clicking.*`), and `app/Input/` is the empty folder waiting for it.
-- **Smoothing the bubble** so it shakes less.
 - **A settings screen.** Settings are edited in `settings.json` for now, except the head and where-to-sit sliders in the calibrations window.
 - **The database** in `persistence/database.py` is an early draft of where users and settings might be stored later. Nothing uses it yet.

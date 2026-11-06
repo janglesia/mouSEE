@@ -37,12 +37,11 @@ This is the infrastructure for cursor movement. It is not yet connected to gaze 
 
 - `CursorController` will be instantiated in `OverlayWindow`
 - It will be called in `UpdateGazeBubble` when `TrackingMonitor.CanMoveCursor` is true
-- It will use the same (x, y) coordinates that are currently used for the gaze bubble (after fine-tune, re-center, and head nudge)
-- Cursor sensitivity (from `CursorSettings.Sensitivity`) will be used for smoothing
+- It will use the same (x, y) coordinates that are currently used for the gaze bubble (after fine-tune, re-center, smoothing and head nudge)
 
 ### Related Settings
 
-- `CursorSettings.Sensitivity` - Cursor smoothing sensitivity (not yet used)
+- `CursorSettings.Smoothing`, `CursorSettings.Sensitivity` - Smoothing the bubble, which the cursor follows ([docs/bubble/SMOOTHING.md](../../docs/bubble/SMOOTHING.md))
 - `CursorSettings.ShowGazeBubble` - Whether to show the gaze bubble overlay
 - `TrackingMonitor.CanMoveCursor` - Property that indicates when the cursor may move (only when tracking is stable)
 
@@ -56,5 +55,3 @@ It implements `IClickInjector.LeftClick()` so triggers (dwell, blink) and tests 
 - Temporary test hotkey: Ctrl+Alt+L (clicks after 1 s, so Ctrl+Alt are released first).
 - Windows ignores injected clicks on elevated windows unless mouSEE runs elevated.
 
-### Future Work
-- Cursor sensitivity smoothing will be implemented when gaze is connected

@@ -113,4 +113,4 @@ Calibrations made before the fit existed have the targets but empty gaze numbers
 
 - **leaning closer or further**: the face gets bigger or smaller in the image, which changes how far the eyes turn for the same spot. The face width is recorded (`faceW`), it could be fitted with a lean forward and back part in the head step. For now the overlay says when you're too close or too far (see [Where to sit](../bubble/WHERE-TO-SIT.md))
 - **turning the head**: head yaw is recorded but not used. While leaning people also turn their head a bit, which the leaning correction partly takes in
-- **jitter**: staring at one point, the bubble still moves from frame to frame, about 1% of the screen width left/right and 2% of the height up/down. That's the smoothing task (filter the bubble's position)
+- **jitter**: staring at one point, the bubble still moves from frame to frame, about 1% of the screen width left/right and 2% of the height up/down. Smoothing takes most of it out, see [SMOOTHING.md](../bubble/SMOOTHING.md)

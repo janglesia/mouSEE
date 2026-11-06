@@ -45,6 +45,8 @@ public partial class OverlayWindow : Window
     private readonly PositionGuide _guide = new();
     // the two nudge head modes: the head nudges the bubble once the eyes settle (app/Bubble/HeadModes/)
     private readonly HeadNudge _nudge;
+    // the shake taken out of the bubble (cursor.smoothing, cursor.sensitivity), see app/Bubble/OneEuroFilter.cs
+    private readonly GazeSmoothing _smoothing;
     // no where-to-sit tips while the head nudges the bubble (the tilting is on purpose then), and for a moment after
     // letting go, to get the head back
     public const long QuietAfterNudgeMs = 2000;
@@ -67,6 +69,7 @@ public partial class OverlayWindow : Window
 
         _monitor = new TrackingMonitor(_settings.Current.Advanced, _settings.Current.Tracking.Paused);
         _nudge = new HeadNudge(_settings.Current.Head);
+        _smoothing = new GazeSmoothing(_settings.Current.Cursor.Sensitivity);
         _monitor.Changed += UpdateStatusBar;
         UpdateStatusBar(); // could start out paused
         ApplyOverlaySettings(_settings.Current.Overlay);
@@ -228,6 +231,11 @@ public partial class OverlayWindow : Window
             _nudge.Settings = now.Head;
             if (old.Head.Mode != now.Head.Mode) _nudge.Reset();
         }
+        if (old.Cursor != now.Cursor)
+        {
+            _smoothing.Sensitivity = now.Cursor.Sensitivity;
+            if (old.Cursor.Smoothing != now.Cursor.Smoothing) _smoothing.Reset();
+        }
     }
 
     private void ApplyOverlaySettings(OverlaySettings overlay)
@@ -256,12 +264,15 @@ public partial class OverlayWindow : Window
         {
             GazeBubble.Visibility = Visibility.Collapsed;
             _nudge.Reset();
+            _smoothing.Reset();
             return;
         }
 
-        // the fine-tune and the re-center's shift, then the head nudge (in the two nudge head modes), then kept
-        // within the screen. the bubble turns yellow while it holds on a spot and the head nudges it
+        // the fine-tune and the re-center's shift, then the smoothing, then the head nudge (in the two nudge head modes,
+        // smoothed first so it sees the eyes come to rest sooner), then kept within the screen. the bubble turns yellow
+        // while it holds on a spot and the head nudges it
         (x, y) = _app.Bubble(x, y);
+        if (_settings.Current.Cursor.Smoothing) (x, y) = _smoothing.Filter(x, y, _clock.Elapsed.TotalSeconds);
         if (_settings.Current.Head.Mode.Nudges() && msg.Faces?.FirstOrDefault()?.Pose is { } pose)
             (x, y) = _nudge.Update(_clock.ElapsedMilliseconds, x, y, pose.Yaw, pose.Pitch);
         bool nudging = _nudge.Holding && _settings.Current.Head.Mode.Nudges();

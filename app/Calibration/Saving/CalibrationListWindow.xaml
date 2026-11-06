@@ -52,6 +52,14 @@
             <Button x:Name="CloseButton" Content="Close" Style="{StaticResource DarkButton}" Margin="0,0,8,8" Click="CloseButton_Click" />
         </WrapPanel>
 
+        <!-- smoothing the bubble (cursor.smoothing, cursor.sensitivity, docs/bubble/SMOOTHING.md). the slider is made in code -->
+        <TextBlock Text="Smoothing" Foreground="White" FontSize="15" FontWeight="SemiBold" Margin="0,12,0,2" />
+        <CheckBox x:Name="SmoothingCheckBox" Foreground="#E0E0E0" FontSize="13" Margin="0,2,0,4" Click="SmoothingCheckBox_Click"
+                  Content="Smooth the bubble: steady while your eyes rest, still quick when they jump" />
+        <Border x:Name="SmoothingPanel" Background="#1C1C1C" CornerRadius="6" Padding="14,10" Margin="24,0,0,8">
+            <StackPanel x:Name="SmoothingSliders" />
+        </Border>
+
         <!-- what moving your head does: one of the three head modes (app/Bubble/HeadModes/, docs/bubble/HEAD-MODES.md).
              a radio button per mode, made in code -->
         <TextBlock Text="What your head does" Foreground="White" FontSize="15" FontWeight="SemiBold" Margin="0,12,0,2" />
