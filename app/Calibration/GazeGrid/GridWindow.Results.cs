@@ -32,8 +32,8 @@ public partial class GridWindow
         int solid = _calibrationRatios.Count(r => r >= MinSolidTargetRatio);
         TargetsValue.Text = $"{solid} / {total}";
         TargetsValue.Foreground = LevelBrush(solid == total ? Level.Good : solid >= total - 2 ? Level.Fair : Level.Poor);
-        TargetsDetail.Text = solid == total
-            ? "Every target was captured with both eyes tracked"
+        TargetsDetail.Text = _captureProblem is not null ? "Some dots didn't get enough usable frames"
+            : solid == total ? "Every target was captured with both eyes tracked"
             : $"{total - solid} had weak tracking";
 
         // ---- tracking stability: share of capture frames with both eyes tracked
@@ -60,7 +60,14 @@ public partial class GridWindow
         string quality, title, subtitle, next;
         Level qualityLevel;
 
-        if (!captureOk)
+        if (_captureProblem is not null)
+        {
+            quality = "Not enough"; qualityLevel = Level.Poor;
+            title = "Calibration needs another try";
+            subtitle = _captureProblem;
+            next = $"Nothing was saved. Look right to {_acceptLabel.ToLowerInvariant()}, or left to close.";
+        }
+        else if (!captureOk)
         {
             quality = "Retry suggested"; qualityLevel = Level.Poor;
             title = "Calibration needs another try";
@@ -79,8 +86,17 @@ public partial class GridWindow
         QualityValue.Foreground = LevelBrush(qualityLevel);
         QualityDetail.Text = $"Took {_sessionClock.Elapsed.TotalSeconds:0} seconds";
         ResultTitle.Text = title;
-        ResultSubtitle.Text = subtitle;
+        ResultSubtitle.Text = _headNote is null || _captureProblem is not null ? subtitle : $"{subtitle} {_headNote}";
         NextStepText.Text = next;
+    }
+
+    /// <summary>What the check of a finished run found, for the result screen. problem: why it can't be used, null if it can.
+    /// nextTry: what accepting does then. headNote: a head position that wasn't reached, which doesn't stop it being used.</summary>
+    public void SetCaptureCheck(string? problem, string nextTry, string? headNote)
+    {
+        _captureProblem = problem;
+        _acceptLabel = problem is null ? "Try it out" : nextTry;
+        _headNote = headNote;
     }
 
     public void ShowCalibrationFailure(string message)
@@ -95,7 +111,7 @@ public partial class GridWindow
         ResultSubtitle.Text = message;
         QualityValue.Text = "Failed";
         QualityDetail.Text = "No calibration was saved.";
-        NextStepText.Text = "Start calibration again manually.";
+        NextStepText.Text = "Look right to start again, or left to close.";
 
         ShowPhase(Phase.Failure);
     }

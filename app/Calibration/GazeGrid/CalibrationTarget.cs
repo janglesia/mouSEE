@@ -78,6 +78,15 @@ public static class HeadPose
         }
     }
 
+    /// <summary>Did the head get at least as far as this pose asks for. Same measures as Guide; further than asked counts.</summary>
+    public static bool Reached(string pose, double moved, double tilted) => pose switch
+    {
+        LeanLeft => -moved >= LeanMin,
+        LeanRight => moved >= LeanMin,
+        HeadUp => UpSign * tilted >= TiltMin,
+        _ => -UpSign * tilted >= TiltMin,
+    };
+
     /// <summary>A hint as it's said out loud: without the numbers in brackets.</summary>
     public static string Spoken(string hint) => hint.Split(" (")[0];
 }

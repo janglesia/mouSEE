@@ -123,17 +123,35 @@ public partial class GridWindow
 
         try{
             bool snap = true;
+            string? pose = null;
+            int done = 0;
 
             foreach(var target in failedTargets){
-                ProgressText.Text = $"Retrying target {target.Index}";
-                await RunTargetAsync(target, snap, _cts.Token);
+                // a dot from the head step has to be looked at with the head there again, or it teaches the fit the wrong thing
+                if(target.Pose is { } p && p != pose){
+                    pose = p;
+                    LeanText.Text = HeadPose.Say(p);
+                    LeanText.Visibility = Visibility.Visible;
+                    StartGuiding(p);
+                    await WaitForPoseAsync(p, _cts.Token, speak: false);
+                }
+                ProgressText.Text = $"Redoing dot {++done} of {failedTargets.Count}";
+                double ratio = await RunTargetAsync(target, snap, _cts.Token);
+                if(target.Index < _calibrationRatios.Count){
+                    _calibrationRatios[target.Index] = ratio;
+                }
                 snap = false;
             }
         }
         catch(OperationCanceledException){
             return;
         }
+        finally{
+            LeanText.Visibility = PoseHintText.Visibility = Visibility.Collapsed;
+            _guidingPose = null;
+        }
 
+        CalibrationCompleted?.Invoke(); // the backend checks it again before the result shows
         _sessionEnded = true;
         ShowPhase(Phase.Result);
         RefreshResult();
@@ -151,7 +169,7 @@ public partial class GridWindow
         PoseHintText.Visibility = _restReference is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private async Task WaitForPoseAsync(string pose, CancellationToken ct)
+    private async Task WaitForPoseAsync(string pose, CancellationToken ct, bool speak = true)
     {
         if (_guidingPose != pose) StartGuiding(pose);
         if (_restReference is null)
@@ -171,7 +189,7 @@ public partial class GridWindow
                 if (inSince < 0) inSince = now;
                 if (now - inSince >= PoseHoldMs)
                 {
-                    _speaker.SayNow("Good, hold it there.");
+                    if (speak) _speaker.SayNow("Good, hold it there.");
                     return;
                 }
             }
@@ -181,7 +199,7 @@ public partial class GridWindow
                 // say what to do once, for when the screen is hard to read with the head tilted
                 if (!hinted && now >= PoseHintAfterMs)
                 {
-                    _speaker.SayNow(HeadPose.Spoken(PoseHintText.Text));
+                    if (speak) _speaker.SayNow(HeadPose.Spoken(PoseHintText.Text));
                     hinted = true;
                 }
             }

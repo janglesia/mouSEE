@@ -120,6 +120,57 @@ public class CalibrationSessionTests
         Assert.False(previewShown);
     }
 
+    [Fact]
+    public async Task Starting_again_by_choice_is_a_fresh_start()
+    {
+        var session = new CalibrationSession();
+        session.StartFullCalibration();
+        session.StartFullCalibration();
+        session.StartFullCalibration();
+        session.SetTargets([InvalidTarget(3)]);
+
+        var result = await session.AcceptAsync(
+            () => Task.CompletedTask,
+            _ => Task.CompletedTask,
+            () => Task.CompletedTask,
+            () => Task.CompletedTask,
+            () => Task.CompletedTask);
+
+        Assert.Equal(CalibrationRecoveryAction.FullCalibration, result.Action);
+    }
+
+    [Fact]
+    public void Missing_expected_targets_fail_the_check()
+    {
+        var session = new CalibrationSession([3, 4]);
+        session.StartFullCalibration();
+        session.SetTargets([ValidTarget(3)]);
+
+        Assert.Equal([4], session.Validate().Missing.Select(m => m.TargetIndex));
+    }
+
+    [Fact]
+    public void Next_recovery_says_what_accepting_would_do()
+    {
+        var session = new CalibrationSession();
+        session.StartFullCalibration();
+        session.SetTargets([InvalidTarget(3)]);
+
+        Assert.Equal(CalibrationRecoveryAction.FullCalibration, session.NextRecovery().Action);
+    }
+
+    private static GazeTargetSummary ValidTarget(int index) =>
+        new()
+        {
+            Index = index,
+            X = 0.5,
+            Y = 0.5,
+            UsableFrames = GazeFit.MinUsableFrames,
+            LeftH = new Spread(0.1, 0.1, 0.1, 0.1, 0.1),
+            RightH = new Spread(0.2, 0.2, 0.2, 0.2, 0.2),
+            Openness = new Spread(0.3, 0.3, 0.3, 0.3, 0.3),
+        };
+
     private static GazeTargetSummary InvalidTarget(int index) =>
         new()
         {
