@@ -83,6 +83,23 @@ public partial class GridWindow
         NextStepText.Text = next;
     }
 
+    public void ShowCalibrationFailure(string message)
+    {
+        if(!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(() => ShowCalibrationFailure(message));
+            return;
+        }
+
+        ResultTitle.Text = "Calibration failed";
+        ResultSubtitle.Text = message;
+        QualityValue.Text = "Failed";
+        QualityDetail.Text = "No calibration was saved.";
+        NextStepText.Text = "Start calibration again manually.";
+
+        ShowPhase(Phase.Failure);
+    }
+
     // =====================================================================
     // The preview: the calibration is saved, the 20 points stay up as rings and the bubble follows the eyes with it,
     // like the fine-tune's preview. Keep it, or do the grid again (which puts back what was saved)

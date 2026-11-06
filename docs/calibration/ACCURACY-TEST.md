@@ -13,3 +13,19 @@ It used to be two separate runs, the accuracy test and a fine-tune with its own 
 The fine-tune from the dots: all of them are added to the calibration's targets and the gaze numbers are fitted again (the sitting normally ones like the grid's, the leaning and tilting ones like the head step's), then a correction on top is fitted on the sitting normally ones. See [FINE-TUNE.md](../bubble/FINE-TUNE.md).
 
 The test is saved in `app/Calibration/Saved/tests/<date>.json` (one line), with the report and every frame of every dot (same frames as a recording, plus `estimateX` / `estimateY`, where the bubble was), whether or not the fine-tune is kept. That's what to look at to decide what to improve: whether more calibration points would help, whether the leaning correction holds up, whether one side needs its own fit. The numbers are in `app/Calibration/Accuracy/AccuracyTest.cs`, the window is `AccuracyTestWindow`.
+
+## Verification
+
+The accuracy calculations are covered by automated tests in
+[`tests/app.Tests/Calibration/Accuracy/AccuracyTestTests.cs`](../../tests/app.Tests/Calibration/Accuracy/AccuracyTestTests.cs).
+
+The directional test confirms that:
+
+- left-to-right target positions produce increasing horizontal gaze estimates
+- top-to-bottom target positions produce increasing vertical gaze estimates
+- horizontal and vertical errors have the expected signs
+
+Run the focused tests with:
+
+```powershell
+dotnet test tests\app.Tests --filter "FullyQualifiedName~AccuracyTestTests"

@@ -25,6 +25,7 @@
     <Using Include="app.Calibration.Accuracy" />
     <Using Include="app.Bubble" />
     <Using Include="app.Bubble.HeadModes" />
+    <Using Include="app.Input" />
     <Using Include="app.LookToAnswer" />
     <Using Include="app.UI" />
     <Using Include="app.Settings" />

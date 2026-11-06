@@ -1,3 +1,9 @@
+# Calibration sample aggregation
+
+See [Calibration sample aggregation](CALIBRATION-SAMPLE-AGGREGATION.md) for the summary
+contract, required-feature validation, recovery policy, tests, and remaining
+manual verification.
+
 # How the gaze is fitted
 
 When you choose **Try it out** on the grid screen's result, `App.StartGazeCalibration()` fits the left/right and up/down numbers to the targets and what moving your head does to the head step (`GazeFit.Fit`, app/Calibration/GazeGrid/GazeFit.cs) and saves them in `gaze`, with the report in `gazeFit`. The tracker restarts and the bubble uses them.

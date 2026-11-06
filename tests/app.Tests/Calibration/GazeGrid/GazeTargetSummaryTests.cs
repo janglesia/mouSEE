@@ -69,4 +69,84 @@ public class SummaryTests
         Assert.Equal(-0.07, f.Left.OffsetV);
         Assert.Equal(4, f.Roll);
     }
+
+    [Fact]
+    public void Complete_normal_target_passes_validation()
+    {
+        var target = new GazeTargetSummary
+        {
+            Index = 1,
+            X = 0.5,
+            Y = 0.5,
+            UsableFrames = GazeFit.MinUsableFrames,
+            LeftH = new Spread(0.1, 0.1, 0.1, 0.1, 0.1),
+            RightH = new Spread(0.2, 0.2, 0.2, 0.2, 0.2),
+            Openness = new Spread(0.3, 0.3, 0.3, 0.3, 0.3),
+        };
+
+        var result = CalibrationFeatureValidator.Validate([target]);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Missing_horizontal_feature_is_reported()
+    {
+        var target = new GazeTargetSummary
+        {
+            Index = 1,
+            X = 0.5,
+            Y = 0.5,
+            UsableFrames = GazeFit.MinUsableFrames,
+            RightH = new Spread(0.2, 0.2, 0.2, 0.2, 0.2),
+            Openness = new Spread(0.3, 0.3, 0.3, 0.3, 0.3),
+        };
+
+        var result = CalibrationFeatureValidator.Validate([target]);
+
+        var missing = Assert.Single(result.Missing);
+        Assert.Equal(1, missing.TargetIndex);
+        Assert.Equal(nameof(GazeTargetSummary.LeftH), missing.Feature);
+    }
+
+    [Fact]
+    public void Head_target_requires_face_position_and_pitch()
+    {
+        var target = new GazeTargetSummary{
+            Index = 24,
+            X = 0.12,
+            Y = 0.2,
+            UsableFrames = GazeFit.MinUsableFrames,
+            Pose = HeadPose.LeanLeft,
+            LeftH = new Spread(0.1, 0.1, 0.1, 0.1, 0.1),
+            RightH = new Spread(0.2, 0.2, 0.2, 0.2, 0.2),
+            Openness = new Spread(0.3, 0.3, 0.3, 0.3, 0.3),
+        };
+
+        var result = CalibrationFeatureValidator.Validate([target]);
+
+        Assert.Contains(result.Missing, m => m.Feature == nameof(GazeTargetSummary.FaceX));
+        Assert.Contains(result.Missing, m => m.Feature == nameof(GazeTargetSummary.Pitch));
+    }
+
+    [Fact]
+    public void Target_with_too_few_usable_frames_fail_validation()
+    {
+        var target = new GazeTargetSummary{
+            Index = 1,
+            X = 0.5,
+            Y = 0.5,
+            UsableFrames = GazeFit.MinUsableFrames - 1,
+            LeftH = new Spread(0.1, 0.1, 0.1, 0.1, 0.1),
+            RightH = new Spread(0.2, 0.2, 0.2, 0.2, 0.2),
+            Openness = new Spread(0.3, 0.3, 0.3, 0.3, 0.3),
+        };
+
+        var result = CalibrationFeatureValidator.Validate([target]);
+
+        Assert.False(result.IsValid);
+        var missing = Assert.Single(result.Missing);
+        Assert.Equal(1, missing.TargetIndex);
+        Assert.Equal($"UsableFrames ({target.UsableFrames}/{GazeFit.MinUsableFrames})", missing.Feature);
+    }
 }

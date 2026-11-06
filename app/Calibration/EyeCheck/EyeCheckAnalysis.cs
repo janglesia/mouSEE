@@ -18,7 +18,7 @@ public static class EyeCheckAnalysis
     public const double DefaultLidsShutOpenness = 0.1;   // eye_extractor.py
     public const double DefaultIrisHiddenRatio = 0.65;   // eye_extractor.py
     public const double DefaultLidsOpenOpenness = 0.26;  // eye_extractor.py
-    public const double DefaultCoveredContrast = 0.01;   // eye_extractor.py | changed to 0.01 to not be used anymore
+    public const double DefaultCoveredContrast = 0.15;   // eye_extractor.py
     public const double DefaultRestPitch = 0.0;          // tracking_status.py
     public const double DefaultRestYaw = 0.0;            // tracking_status.py
 
