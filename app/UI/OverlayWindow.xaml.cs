@@ -1,11 +1,13 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows.Controls;
+using System.Windows.Input;
 using app.Input;
 
 namespace app.UI;
@@ -18,16 +20,18 @@ public partial class OverlayWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;  // hidden from Alt+Tab
     private const int WS_EX_NOACTIVATE = 0x08000000;  // never steals focus
 
-    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3, HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5, HOTKEY_CURSOR = 6, HOTKEY_CLICK = 7;
-    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52, VK_F = 0x46, VK_M = 0x4D, VK_L = 0x4C;
+    private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3,
+                      HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5, HOTKEY_CURSOR = 6,
+                      HOTKEY_CLICK = 7, HOTKEY_WHEEL = 8, HOTKEY_TEST_MODE = 9;
+    private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2,
+                       VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52,
+                       VK_F = 0x46, VK_M = 0x4D, VK_L = 0x4C, VK_W = 0x57, VK_T = 0x54;
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
-
-    //private const double OverlayMargin = 10; commented out by eri obsolete for bubble gaze
 
     // ---- Tracker (shared, owned by App) ----
     private readonly TrackerClient _tracker = ((App)Application.Current).Tracker;
@@ -39,11 +43,21 @@ public partial class OverlayWindow : Window
     private int _framesInWindow;
     private double _fps;
 
+    // ---- Action Wheel Dwell Trigger ----
+    private Point _lastGazeCanvasPoint;
+    private Point _dwellAnchor;
+    private long _dwellStartMs;
+    private long _wheelClosedMs = long.MinValue / 2;
+    private const double DwellRadiusPx = 35.0; // Max eye jitter allowed while dwelling to open
+    private const long DwellToOpenMs = 1000;   // Hold gaze for 1s to pop open the wheel
+    private const long WheelCooldownMs = 800;  // Brief pause after closing before re-opening
+
+    // ---- Mouse test mode ----
+    private bool _isMouseTestMode = false;
+
     // ---- Tracking status bar ----
     private readonly TrackingMonitor _monitor;
-    // where to sit: move back toward where calibration was, or re-center
     private readonly PositionGuide _guide = new();
-    // the two nudge head modes: the head nudges the bubble once the eyes settle (app/Bubble/HeadModes/)
     private readonly HeadNudge _nudge;
     // the shake taken out of the bubble (cursor.smoothing, cursor.sensitivity), see app/Bubble/OneEuroFilter.cs
     private readonly GazeSmoothing _smoothing;
@@ -54,7 +68,6 @@ public partial class OverlayWindow : Window
     private bool _guideQuiet;
     private static readonly Brush Following = Frozen("#FFFFFF"), Holding = Frozen("#F7D060");
     private readonly App _app = (App)Application.Current;
-    // frames stopping can't be noticed from OnMessage, so check on a timer
     private readonly DispatcherTimer _timeoutTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private static readonly Brush Green = Frozen("#2E7D32"), Orange = Frozen("#EF6C00"),
                                   Red = Frozen("#C62828"), Grey = Frozen("#616161");
@@ -63,15 +76,12 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
-        // text height changes (e.g. "no face" vs. full readout), so keep the bottom edge pinned
-        //SizeChanged += (_, _) => PositionBottomLeft();
-        //I made the overlay fullscreen for the gaze bubble so the line above is obsolete but i didn't want to delete in case we need to change things
 
         _monitor = new TrackingMonitor(_settings.Current.Advanced, _settings.Current.Tracking.Paused);
         _nudge = new HeadNudge(_settings.Current.Head);
         _smoothing = new GazeSmoothing(_settings.Current.Cursor.Sensitivity);
         _monitor.Changed += UpdateStatusBar;
-        UpdateStatusBar(); // could start out paused
+        UpdateStatusBar();
         ApplyOverlaySettings(_settings.Current.Overlay);
         _timeoutTimer.Tick += (_, _) => _monitor.CheckTimeout();
         _settings.Changed += OnSettingsChanged;
@@ -81,15 +91,18 @@ public partial class OverlayWindow : Window
         _app.OffsetChanged += OnRecentered;
         _app.Calibrations.Changed += OnCalibrationsChanged;
         _app.CursorMovementChanged += OnCursorMovementChanged;
+        ClickWheel.ActionSelected += OnWheelActionSelected;
+
+        // Mouse testing hooks
+        MouseMove += OnOverlayMouseMove;
+        MouseDown += OnOverlayMouseDown;
 
         Loaded += async (_, _) =>
         {
-            //PositionBottomLeft();
             _timeoutTimer.Start();
             _tracker.MessageReceived += OnMessage;
             _tracker.LogReceived += OnLog;
             _tracker.Failed += OnFailed;
-            // no-op if something else already started the tracker
             await ((App)Application.Current).StartTrackerAsync();
         };
 
@@ -100,6 +113,9 @@ public partial class OverlayWindow : Window
             _app.OffsetChanged -= OnRecentered;
             _app.Calibrations.Changed -= OnCalibrationsChanged;
             _app.CursorMovementChanged -= OnCursorMovementChanged;
+            ClickWheel.ActionSelected -= OnWheelActionSelected;
+            MouseMove -= OnOverlayMouseMove;
+            MouseDown -= OnOverlayMouseDown;
             _tracker.MessageReceived -= OnMessage;
             _tracker.LogReceived -= OnLog;
             _tracker.Failed -= OnFailed;
@@ -111,17 +127,10 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_FINETUNE);
             UnregisterHotKey(hwnd, HOTKEY_CURSOR);
             UnregisterHotKey(hwnd, HOTKEY_CLICK);
+            UnregisterHotKey(hwnd, HOTKEY_WHEEL);
+            UnregisterHotKey(hwnd, HOTKEY_TEST_MODE);
         };
     }
-
-    // I made the overlay fullscreen for the gaze bubble and positioned it bottom left in the xaml so this function is obsolete
-    // private void PositionBottomLeft()
-    // {
-    //     // WorkArea excludes the taskbar, so the overlay sits just above it
-    //     var area = SystemParameters.WorkArea;
-    //     Left = area.Left + OverlayMargin;
-    //     Top = area.Bottom - ActualHeight - OverlayMargin;
-    // }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
@@ -130,9 +139,6 @@ public partial class OverlayWindow : Window
         int style = GetWindowLong(hwnd, GWL_EXSTYLE);
         SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
 
-        // Ctrl+Alt+Q closes the overlay (needed because the window ignores the mouse and focus),
-        // Ctrl+Alt+P pauses and unpauses, Ctrl+Alt+C opens the calibrations, Ctrl+Alt+R re-centers, Ctrl+Alt+F
-        // fine-tunes, Ctrl+Alt+M toggles cursor movement. global, so they work from any app. q, p, c, r, f and m in the camera window do the same, see App.xaml.cs
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         RegisterHotKey(hwnd, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, VK_Q);
         RegisterHotKey(hwnd, HOTKEY_PAUSE, MOD_CONTROL | MOD_ALT, VK_P);
@@ -141,6 +147,8 @@ public partial class OverlayWindow : Window
         RegisterHotKey(hwnd, HOTKEY_FINETUNE, MOD_CONTROL | MOD_ALT, VK_F);
         RegisterHotKey(hwnd, HOTKEY_CURSOR, MOD_CONTROL | MOD_ALT, VK_M);
         RegisterHotKey(hwnd, HOTKEY_CLICK, MOD_CONTROL | MOD_ALT, VK_L); // Ctrl+Alt+L for left click
+        RegisterHotKey(hwnd, HOTKEY_WHEEL, MOD_CONTROL | MOD_ALT, VK_W);
+        RegisterHotKey(hwnd, HOTKEY_TEST_MODE, MOD_CONTROL | MOD_ALT, VK_T);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -166,7 +174,7 @@ public partial class OverlayWindow : Window
                 break;
             case HOTKEY_FINETUNE:
                 handled = true;
-                ((App)Application.Current).StartAccuracyTest(); // the accuracy test is the fine-tune too
+                ((App)Application.Current).StartAccuracyTest();
                 break;
             case HOTKEY_CURSOR:
                 handled = true;
@@ -175,6 +183,14 @@ public partial class OverlayWindow : Window
             case HOTKEY_CLICK:
                 handled = true;
                 _ = ClickAfterDelayAsync();
+                break;
+            case HOTKEY_WHEEL:
+                handled = true;
+                ToggleWheelManual();
+                break;
+            case HOTKEY_TEST_MODE:
+                handled = true;
+                ToggleMouseTestMode();
                 break;
         }
 
@@ -193,11 +209,132 @@ public partial class OverlayWindow : Window
         TryClick();
     }
 
+    private void ToggleWheelManual()
+    {
+        if (ClickWheel.IsOpen)
+        {
+            ClickWheel.Close();
+            _wheelClosedMs = _clock.ElapsedMilliseconds;
+        }
+        else
+        {
+            Point target = _lastGazeCanvasPoint.X > 0 && _lastGazeCanvasPoint.Y > 0
+                ? _lastGazeCanvasPoint
+                : new Point(GazeCanvas.ActualWidth / 2, GazeCanvas.ActualHeight / 2);
+            ClickWheel.OpenAt(target);
+        }
+    }
+
+    private void ToggleMouseTestMode()
+    {
+        _isMouseTestMode = !_isMouseTestMode;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        int style = GetWindowLong(hwnd, GWL_EXSTYLE);
+
+        if (_isMouseTestMode)
+        {
+            SetWindowLong(hwnd, GWL_EXSTYLE, style & ~WS_EX_TRANSPARENT);
+
+            GazeCanvas.IsHitTestVisible = true;
+            ClickWheel.IsHitTestVisible = true;
+
+            if (!ClickWheel.IsOpen)
+            {
+                ClickWheel.OpenAt(new Point(GazeCanvas.ActualWidth / 2, GazeCanvas.ActualHeight / 2));
+            }
+
+            Debug.WriteLine("[ActionWheel] Mouse test mode ENABLED (Move/Click to test)");
+        }
+        else
+        {
+            SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT);
+
+            GazeCanvas.IsHitTestVisible = false;
+            ClickWheel.IsHitTestVisible = false;
+
+            Debug.WriteLine("[ActionWheel] Mouse test mode DISABLED (Eye tracking mode)");
+        }
+
+        UpdateStatusBar();
+    }
+
+    private void OnOverlayMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isMouseTestMode || !ClickWheel.IsOpen) return;
+        Point mousePoint = e.GetPosition(GazeCanvas);
+        ClickWheel.UpdateGaze(mousePoint, _clock.ElapsedMilliseconds);
+    }
+
+    private void OnOverlayMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isMouseTestMode || !ClickWheel.IsOpen) return;
+        ClickWheel.TriggerHoveredSlice();
+    }
+
+    private void LaunchOnScreenKeyboard()
+    {
+        try
+        {
+            string oskPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "osk.exe");
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = oskPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ActionWheel] Failed to launch OSK: {ex.Message}");
+        }
+    }
+
+    private void OnWheelActionSelected(ClickAction action, Point targetCanvasPoint)
+    {
+        _wheelClosedMs = _clock.ElapsedMilliseconds;
+
+        Point screenPoint = GazeCanvas.PointToScreen(targetCanvasPoint);
+        double normalizedX = screenPoint.X / SystemParameters.PrimaryScreenWidth;
+        double normalizedY = screenPoint.Y / SystemParameters.PrimaryScreenHeight;
+        _cursorController.MoveToNormalized(normalizedX, normalizedY);
+
+        Debug.WriteLine($"[ActionWheel] Triggered {action} at ({screenPoint.X:0}, {screenPoint.Y:0})");
+        switch (action)
+        {
+            case ClickAction.LeftClick:
+                // _cursorController.LeftClick();
+                break;
+            case ClickAction.RightClick:
+                // _cursorController.RightClick();
+                break;
+            case ClickAction.DoubleClick:
+                // _cursorController.DoubleClick();
+                break;
+            case ClickAction.Keyboard:
+                LaunchOnScreenKeyboard();
+                break;
+            case ClickAction.Drag:
+                // _cursorController.ToggleLeftDown();
+                break;
+            case ClickAction.Scroll:
+                // Enter scroll mode
+                break;
+        }
+    }
+
     private void OnRecentered() => _guide.Recentered(_app.RecenteredAt);
 
     private void OnCalibrationsChanged() => _guide.Calibrated = HeadPosition.Of(_app.Calibrations.Active);
 
-    private void OnCursorMovementChanged() => UpdateStatusBar();
+    private void OnCursorMovementChanged()
+    {
+        if (!_app.IsCursorMovementEnabled && ClickWheel.IsOpen)
+            ClickWheel.Close();
+        UpdateStatusBar();
+    }
 
     private void UpdateGuide()
     {
@@ -210,7 +347,6 @@ public partial class OverlayWindow : Window
         GuideBar.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    // hides the where-to-sit tips while nudging and for QuietAfterNudgeMs after
     private void QuietGuide(bool nudging)
     {
         long now = _clock.ElapsedMilliseconds;
@@ -247,7 +383,7 @@ public partial class OverlayWindow : Window
     }
 
     // ---- Tracker events ----
-    private void OnLog(string line) => Debug.WriteLine($"[tracker] {line}"); // may be a background thread
+    private void OnLog(string line) => Debug.WriteLine($"[tracker] {line}");
 
     private void OnFailed(string reason)
     {
@@ -273,40 +409,75 @@ public partial class OverlayWindow : Window
         // while it holds on a spot and the head nudges it
         (x, y) = _app.Bubble(x, y);
         if (_settings.Current.Cursor.Smoothing) (x, y) = _smoothing.Filter(x, y, _clock.Elapsed.TotalSeconds);
-        if (_settings.Current.Head.Mode.Nudges() && msg.Faces?.FirstOrDefault()?.Pose is { } pose)
+        bool nudging = false;
+        if (!ClickWheel.IsOpen && _settings.Current.Head.Mode.Nudges()
+            && msg.Faces?.FirstOrDefault()?.Pose is { } pose)
+        {
             (x, y) = _nudge.Update(_clock.ElapsedMilliseconds, x, y, pose.Yaw, pose.Pitch);
-        bool nudging = _nudge.Holding && _settings.Current.Head.Mode.Nudges();
+            nudging = _nudge.Holding;
+        }
+        else if (ClickWheel.IsOpen)
+        {
+            _nudge.Reset();
+        }
+
+        long now = _clock.ElapsedMilliseconds;
         GazeBubble.Stroke = nudging ? Holding : Following;
-        QuietGuide(nudging);
+        QuietGuide(nudging || ClickWheel.IsOpen);
+
         x = Math.Clamp(x, 0.0, 1.0);
         y = Math.Clamp(y, 0.0, 1.0);
 
-        // Convert normalized coordinates into canvas pixels.
-        double left = x * GazeCanvas.ActualWidth - GazeBubble.Width / 2;
-        double top = y * GazeCanvas.ActualHeight - GazeBubble.Height / 2;
-
-        Canvas.SetLeft(GazeBubble, left);
-        Canvas.SetTop(GazeBubble, top);
-
+        // 3. Update gaze bubble visual position
+        Point gazeCanvasPoint = new Point(x * GazeCanvas.ActualWidth, y * GazeCanvas.ActualHeight);
+        _lastGazeCanvasPoint = gazeCanvasPoint;
+        Canvas.SetLeft(GazeBubble, gazeCanvasPoint.X - GazeBubble.Width / 2);
+        Canvas.SetTop(GazeBubble, gazeCanvasPoint.Y - GazeBubble.Height / 2);
         GazeBubble.Visibility = Visibility.Visible;
 
-        // Move the real cursor if cursor movement is enabled and tracking is good
-        if (_app.IsCursorMovementEnabled && _monitor.CanMoveCursor)
+        // 4. If ActionWheel is open and NOT in mouse test mode, feed gaze directly
+        if (ClickWheel.IsOpen)
         {
-            // The bubble center is at (x, y) in normalized coordinates (0-1 of canvas).
-            // Calculate the actual screen position of the bubble center.
-            // The canvas might not exactly match the screen size, so we need to map canvas coordinates to screen coordinates.
-            Point canvasPoint = new Point(x * GazeCanvas.ActualWidth, y * GazeCanvas.ActualHeight);
-            Point screenPoint = GazeCanvas.PointToScreen(canvasPoint);
+            if (!_isMouseTestMode)
+            {
+                ClickWheel.UpdateGaze(gazeCanvasPoint, now);
+            }
+            if (!ClickWheel.IsOpen)
+                _wheelClosedMs = now;
+            return;
+        }
 
-            // Convert screen pixel coordinates to normalized screen coordinates
+        // 5. Move real OS cursor only when wheel is closed and not testing
+        if (_app.IsCursorMovementEnabled && _monitor.CanMoveCursor && !_isMouseTestMode)
+        {
+            Point screenPoint = GazeCanvas.PointToScreen(gazeCanvasPoint);
             double normalizedX = screenPoint.X / SystemParameters.PrimaryScreenWidth;
             double normalizedY = screenPoint.Y / SystemParameters.PrimaryScreenHeight;
 
             _cursorController.MoveToNormalized(normalizedX, normalizedY);
+
+            // 6. Check dwell threshold to open ActionWheel
+            if (now - _wheelClosedMs >= WheelCooldownMs)
+            {
+                double dx = gazeCanvasPoint.X - _dwellAnchor.X;
+                double dy = gazeCanvasPoint.Y - _dwellAnchor.Y;
+                if (Math.Sqrt(dx * dx + dy * dy) > DwellRadiusPx)
+                {
+                    _dwellAnchor = gazeCanvasPoint;
+                    _dwellStartMs = now;
+                }
+                else if (now - _dwellStartMs >= DwellToOpenMs)
+                {
+                    ClickWheel.OpenAt(_dwellAnchor);
+                    _dwellStartMs = now;
+                }
+            }
+        }
+        else
+        {
+            _dwellStartMs = now;
         }
     }
-
 
     private void OnMessage(TrackerMessage msg)
     {
@@ -318,7 +489,6 @@ public partial class OverlayWindow : Window
 
             case "error":
                 DebugText.Text = $"Tracker error:\n{msg.Message}";
-                // e.g. the camera can't be opened. the tracker exits right after
                 _monitor.OnTrackerStopped(msg.Message ?? "error");
                 break;
 
@@ -335,7 +505,6 @@ public partial class OverlayWindow : Window
                     _fpsWindowStartMs = now;
                 }
 
-                // update the text ~10 times a second
                 if (now - _lastUpdateMs >= 100)
                 {
                     _lastUpdateMs = now;
@@ -349,8 +518,12 @@ public partial class OverlayWindow : Window
     {
         var (headline, hint) = TrackingMonitor.Describe(_monitor.State, _monitor.Reason);
 
-        // Add cursor movement indicator
-        if (_app.IsCursorMovementEnabled)
+        if (_isMouseTestMode)
+        {
+            headline = "MOUSE TEST MODE ON";
+            hint = "Move mouse & click wheel slices. Press Ctrl+Alt+T to exit.";
+        }
+        else if (_app.IsCursorMovementEnabled)
         {
             headline = "Cursor movement ON";
             hint = hint == "" ? "Press Ctrl+Alt+M to stop" : $"{hint}. Press Ctrl+Alt+M to stop cursor movement.";
@@ -361,9 +534,9 @@ public partial class OverlayWindow : Window
         StatusHint.Visibility = hint == "" ? Visibility.Collapsed : Visibility.Visible;
         StatusBar.Background = _monitor.State switch
         {
+            _ when _isMouseTestMode => Orange,
             TrackingState.Tracking or TrackingState.Uncertain => _app.IsCursorMovementEnabled ? Orange : Green,
             TrackingState.Starting or TrackingState.Paused => Grey,
-            // closed eyes aren't an error, just nothing to track
             TrackingState.Recovering => Orange,
             TrackingState.Lost when _monitor.Reason == "eyes_closed" => Orange,
             _ => Red,
@@ -377,8 +550,6 @@ public partial class OverlayWindow : Window
         return brush;
     }
 
-    // "wall" is Unix ms stamped by the tracker right after it reads the camera frame.
-    // Latency = time from that moment until this app received the frame's message.
     private static string FormatLatency(long wallMs)
     {
         if (wallMs == 0) return "n/a (no wall field)";
@@ -388,10 +559,6 @@ public partial class OverlayWindow : Window
 
     private static string FormatFrame(TrackerMessage msg, double fps, string latency)
     {
-        //messages FPS: how frequently the C# app receives frame messages.
-        //capture FPS: how frequently the Python tracker successfully reads frames from the camera, measured over approximately one-second windows.
-        //landmark ms: how long MediaPipe's inference call takes for a frame.
-        //latency: existing elapsed time from the Python wall timestamp to the C# app's current time.
         string header = $"messages {fps,5:0.0} fps | " +
                         $"capture {msg.CaptureFps,5:0.0} fps | " +
                         $"landmark {msg.LandmarkMs,6:0.0} ms | " +
@@ -405,7 +572,6 @@ public partial class OverlayWindow : Window
         double blinkL = f.Blendshapes.GetValueOrDefault("eyeBlinkLeft");
         double blinkR = f.Blendshapes.GetValueOrDefault("eyeBlinkRight");
 
-        // from eye_extractor.py; this line also confirms the Eyes records are parsing
         var gz = f.Eyes?.Gaze;
         string gazeLine = gz is { H: double gh, V: double gv }
             ? $"gaze h {gh:+0.000;-0.000;+0.000}  v {gv:+0.000;-0.000;+0.000}  {gz.Direction}"

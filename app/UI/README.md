@@ -5,6 +5,7 @@ The overlay, and pieces the other windows share. A window that belongs to one fe
 | | |
 |---|---|
 | `OverlayWindow.xaml(.cs)` | always on top, covering the screen without getting in the way: the bubble, the status bar, the debug readout, the where-to-sit bar, and the global Ctrl+Alt keys |
+| `ActionWheel.xaml(.cs)` | gaze-selectable mouse action wheel, including each option's on-wheel description; see [ActionWheel.md](./ActionWheel.md) |
 | `MiddleDot.xaml(.cs)` | the dot shown whenever a screen asks you to look at the middle |
 | `Speaker.cs` | reads instructions out loud, and the sound at the end of a step |
 | `SettingSlider.cs` | a slider for one setting, built from its description |
