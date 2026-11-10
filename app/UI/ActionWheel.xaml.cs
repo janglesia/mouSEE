@@ -52,9 +52,14 @@ public partial class ActionWheel : UserControl
     private Path? _dwellArc;
 
     private int _hoveredIndex = -1;
-    private long _hoverStartMs;
+    // looking at an option long enough picks it, see app/Input/GazeDwell.cs
+    private readonly GazeDwell _dwell = new(new WheelSettings().SelectDwellMs, new WheelSettings().LeaveMs);
 
-    public int DwellMs { get; set; } = 900;
+    // SelectDwellMs and LeaveMs, for when they're settings
+    public WheelSettings Settings
+    {
+        set => (_dwell.DwellMs, _dwell.LeaveMs) = (value.SelectDwellMs, value.LeaveMs);
+    }
     public Point TargetPosition { get; private set; }
     public bool IsOpen => Visibility == Visibility.Visible;
     public event Action<ClickAction, Point>? ActionSelected;
@@ -70,6 +75,7 @@ public partial class ActionWheel : UserControl
     {
         TargetPosition = canvasPoint;
         _hoveredIndex = -1;
+        _dwell.Reset();
         ResetHighlight();
 
         Canvas.SetLeft(this, canvasPoint.X - Width / 2);
@@ -81,6 +87,7 @@ public partial class ActionWheel : UserControl
     {
         Visibility = Visibility.Collapsed;
         _hoveredIndex = -1;
+        _dwell.Reset();
         ResetHighlight();
     }
 
@@ -88,31 +95,9 @@ public partial class ActionWheel : UserControl
     {
         if (!IsOpen) return;
 
-        double dx = gazeCanvasPoint.X - TargetPosition.X;
-        double dy = gazeCanvasPoint.Y - TargetPosition.Y;
-        double dist = Math.Sqrt(dx * dx + dy * dy);
-
-        // Center deadzone or outside wheel resets hover
-        if (dist < InnerRadius || dist > OuterRadius + 40)
-        {
-            if (_hoveredIndex != -1)
-            {
-                _hoveredIndex = -1;
-                ResetHighlight();
-            }
-            return;
-        }
-
-        // Angle: 0 at top, clockwise 0..360
-        double angle = Math.Atan2(dy, dx) * 180.0 / Math.PI + 90.0;
-        if (angle < 0) angle += 360.0;
-
-        double sweep = 360.0 / _items.Count; // Exactly 45 deg
-        double shifted = (angle + sweep / 2.0) % 360.0;
-        int index = (int)(shifted / sweep);
-
-        // Disregard the empty slot
-        if (!_items[index].IsActive)
+        // the dwell decides which option is highlighted, so a glance away keeps it and its time (GazeDwell's LeaveMs)
+        bool picked = _dwell.Update(nowMs, OptionAt(gazeCanvasPoint));
+        if (_dwell.Target is not { } index)
         {
             if (_hoveredIndex != -1)
             {
@@ -125,14 +110,12 @@ public partial class ActionWheel : UserControl
         if (index != _hoveredIndex)
         {
             _hoveredIndex = index;
-            _hoverStartMs = nowMs;
             HighlightSlice(index);
         }
 
-        double progress = Math.Clamp((double)(nowMs - _hoverStartMs) / DwellMs, 0.0, 1.0);
-        UpdateDwellArc(index, progress);
+        UpdateDwellArc(index, _dwell.Progress);
 
-        if (progress >= 1.0)
+        if (picked)
         {
             var chosen = _items[index].Action;
             var target = TargetPosition;
@@ -140,6 +123,28 @@ public partial class ActionWheel : UserControl
             if (chosen != ClickAction.Cancel && chosen != ClickAction.None)
                 ActionSelected?.Invoke(chosen, target);
         }
+    }
+
+    // the option under the gaze, null in the center, outside the wheel or on the empty slot
+    private int? OptionAt(Point gazeCanvasPoint)
+    {
+        double dx = gazeCanvasPoint.X - TargetPosition.X;
+        double dy = gazeCanvasPoint.Y - TargetPosition.Y;
+        double dist = Math.Sqrt(dx * dx + dy * dy);
+
+        // Center deadzone or outside wheel resets hover
+        if (dist < InnerRadius || dist > OuterRadius + 40) return null;
+
+        // Angle: 0 at top, clockwise 0..360
+        double angle = Math.Atan2(dy, dx) * 180.0 / Math.PI + 90.0;
+        if (angle < 0) angle += 360.0;
+
+        double sweep = 360.0 / _items.Count; // Exactly 45 deg
+        double shifted = (angle + sweep / 2.0) % 360.0;
+        int index = (int)(shifted / sweep);
+
+        // Disregard the empty slot
+        return _items[index].IsActive ? index : null;
     }
 
     private void BuildWheel()

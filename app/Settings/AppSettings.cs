@@ -82,6 +82,24 @@ public sealed record ClickingSettings
     public int DwellRadiusPx { get; init; } = 50;
 }
 
+// the action wheel's dwell times (app/UI/ActionWheel.xaml.cs, app/Input/GazeDwell.cs). not in AppSettings yet, so not in
+// settings.json or the settings list. for the settings menu: add it to AppSettings as Wheel, put a [Setting] on each and
+// a row for each in docs/SETTINGS.md (a test checks), and read them from _settings.Current.Wheel instead of new()
+public sealed record WheelSettings
+{
+    // looking at one spot this long opens the wheel. only in the Eyes only head mode: the nudge modes hold the bubble on
+    // that same resting gaze
+    public int OpenDwellMs { get; init; } = 1000;
+    // how far the gaze can wander from that spot, in pixels of the screen
+    public double OpenRadiusPx { get; init; } = 35;
+    // looking at an option this long picks it
+    public int SelectDwellMs { get; init; } = 900;
+    // the gaze has to be off the spot or option this long to start over, so one stray frame doesn't
+    public int LeaveMs { get; init; } = 150;
+    // after the wheel closes, this long before looking can open it again
+    public int CooldownMs { get; init; } = 800;
+}
+
 // same values as click_method in the Settings table (persistence/database.py)
 [JsonConverter(typeof(JsonStringEnumConverter<ClickMethod>))]
 public enum ClickMethod

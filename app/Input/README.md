@@ -45,6 +45,15 @@ This is the infrastructure for cursor movement. It is not yet connected to gaze 
 - `CursorSettings.ShowGazeBubble` - Whether to show the gaze bubble overlay
 - `TrackingMonitor.CanMoveCursor` - Property that indicates when the cursor may move (only when tracking is stable)
 
+## GazeDwell
+
+`GazeDwell` picks a target the gaze stays on long enough, for the action wheel (opening it, and choosing an option).
+
+- `Update(ms, target)`: the target the gaze is on (any number, null for none). It returns true once, when the time is up.
+- `UpdateSpot(ms, x, y, radius)`: the same for a resting gaze. The target is a circle around where the gaze came to rest, and `Anchor` says where that is.
+- It starts over only after the gaze has been off the target for `LeaveMs`, so one stray frame doesn't. Staying on another target that long moves the timer there.
+- `DwellMs` and `LeaveMs` can change at any time. The wheel's numbers are in `WheelSettings`. Tests: `tests/app.Tests/Input/GazeDwellTests.cs`.
+
 ## MouseClicker
 
 `MouseClicker` performs a real Windows left-click with `SendInput`, at the current cursor position.

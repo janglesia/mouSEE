@@ -45,12 +45,11 @@ public partial class OverlayWindow : Window
 
     // ---- Action Wheel Dwell Trigger ----
     private Point _lastGazeCanvasPoint;
-    private Point _dwellAnchor;
-    private long _dwellStartMs;
     private long _wheelClosedMs = long.MinValue / 2;
-    private const double DwellRadiusPx = 35.0; // Max eye jitter allowed while dwelling to open
-    private const long DwellToOpenMs = 1000;   // Hold gaze for 1s to pop open the wheel
-    private const long WheelCooldownMs = 800;  // Brief pause after closing before re-opening
+    // the dwell times, fixed for now. as settings this becomes _settings.Current.Wheel, see WheelSettings
+    private static readonly WheelSettings Wheel = new();
+    // looking at one spot opens the wheel, see app/Input/GazeDwell.cs
+    private readonly GazeDwell _openDwell = new(Wheel.OpenDwellMs, Wheel.LeaveMs);
 
     // ---- Mouse test mode ----
     private bool _isMouseTestMode = false;
@@ -456,26 +455,25 @@ public partial class OverlayWindow : Window
 
             _cursorController.MoveToNormalized(normalizedX, normalizedY);
 
-            // 6. Check dwell threshold to open ActionWheel
-            if (now - _wheelClosedMs >= WheelCooldownMs)
+            // 6. Check dwell threshold to open ActionWheel. only in Eyes only: the nudge modes hold the bubble on the same
+            // resting gaze, so both would go off at once
+            if (!_settings.Current.Head.Mode.Nudges() && now - _wheelClosedMs >= Wheel.CooldownMs)
             {
-                double dx = gazeCanvasPoint.X - _dwellAnchor.X;
-                double dy = gazeCanvasPoint.Y - _dwellAnchor.Y;
-                if (Math.Sqrt(dx * dx + dy * dy) > DwellRadiusPx)
+                if (_openDwell.UpdateSpot(now, gazeCanvasPoint.X, gazeCanvasPoint.Y, Wheel.OpenRadiusPx)
+                    && _openDwell.Anchor is { } spot)
                 {
-                    _dwellAnchor = gazeCanvasPoint;
-                    _dwellStartMs = now;
+                    ClickWheel.OpenAt(new Point(spot.X, spot.Y));
+                    _openDwell.Reset();
                 }
-                else if (now - _dwellStartMs >= DwellToOpenMs)
-                {
-                    ClickWheel.OpenAt(_dwellAnchor);
-                    _dwellStartMs = now;
-                }
+            }
+            else
+            {
+                _openDwell.Reset();
             }
         }
         else
         {
-            _dwellStartMs = now;
+            _openDwell.Reset();
         }
     }
 
