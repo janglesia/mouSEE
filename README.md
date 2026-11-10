@@ -96,6 +96,7 @@ mouSEE/
     database.py                SQLite schema draft (users, settings, calibration), not used yet
   docs/
     OVERVIEW.md                start here: how it all fits together, what the words mean, where things are
+    REFERENCE.html             one-page quick reference: keys, the action wheel, colours, fixes (open in a browser)
     SETUP.md                   installing everything, step by step
     COMMANDS.md                the commands make runs, for running things by hand
     SETTINGS.md                every setting, the keys, and how to add a setting
@@ -150,7 +151,7 @@ mouSEE/
 
 **Makefile** has shortcuts so you don't have to remember the individual commands. See [Make commands](#make-commands).
 
-**Input** (`app/Input/`) acts on the screen. `CursorController` moves the real Windows cursor to where the gaze bubble is (toggle with **Ctrl+Alt+M**), and `MouseClicker` left-clicks at the cursor's current position through `IClickInjector`, so the dwell and blink clicks can use it later. Clicks only happen while the cursor is following the gaze and tracking is good. **Ctrl+Alt+L** is a temporary test hotkey that clicks after one second. Windows ignores clicks on admin windows unless mouSEE runs as admin too. For more info, view the README.md.
+**Input** (`app/Input/`) acts on the screen. `CursorController` moves the real Windows cursor to where the gaze bubble is (toggle with **Ctrl+Alt+M**, which needs a calibration in use; a fine-tune makes it land closer), and `MouseClicker` left-clicks at the cursor's current position through `IClickInjector`, so the dwell and blink clicks can use it later. Clicks only happen while the cursor is following the gaze and tracking is good. **Ctrl+Alt+L** is a temporary test hotkey that clicks after one second. Windows ignores clicks on admin windows unless mouSEE runs as admin too. For more info, view the README.md.
 
 **The bubble** (`app/Bubble/`): after the calibration puts the bubble roughly where you look, the re-center and fine-tune correct it for how you sit today, the head modes decide what moving your head does, and the where-to-sit hints tell you when you moved too far. See the [docs/bubble/](docs/bubble/) docs.
 

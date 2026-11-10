@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mouSEE Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one reference sheet. Hotkeys first and biggest, then a two-column grid of short cards that stacks on phones.
+   Colours come from the app itself: the bubble's white and holding yellow, the status bar's green, orange, grey and red. */
+:root {
+  --bg: #eef1ee;
+  --surface: #ffffff;
+  --ink: #12171d;
+  --muted: #56606b;
+  --line: #d9dfdb;
+  --key: #f1f4f2;
+  --key-edge: #c3cbc6;
+  --accent: #b88400;          /* text-safe version of the bubble's holding yellow */
+  --hold: #f7d060;            /* the bubble while it holds (head nudge) */
+  --hold-fill: rgba(247, 208, 96, .22);
+  --stage: #151a20;           /* a dark tile standing in for the screen behind the bubble */
+  --ok: #2f9e5b; --warn: #e08a1e; --idle: #8a939c; --bad: #d64545;
+  --font-display: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1215; --surface: #161b20; --ink: #edf1ee; --muted: #9aa5ae; --line: #252d33;
+    --key: #20272d; --key-edge: #3a444c; --accent: #f7d060; --hold-fill: rgba(247, 208, 96, .14);
+    --stage: #090c0f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1215; --surface: #161b20; --ink: #edf1ee; --muted: #9aa5ae; --line: #252d33;
+  --key: #20272d; --key-edge: #3a444c; --accent: #f7d060; --hold-fill: rgba(247, 208, 96, .14);
+  --stage: #090c0f; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.55 var(--font-body);
+  padding: 40px 16px 56px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
+
+header { display: grid; gap: 8px; padding-bottom: 6px; }
+.label {
+  font: 700 .72rem/1 var(--font-body); text-transform: uppercase; letter-spacing: .12em;
+  color: var(--muted); margin: 0;
+}
+h1 {
+  font: 700 clamp(2.2rem, 6vw, 3.4rem)/1 var(--font-display);
+  letter-spacing: -.02em; margin: 0; display: flex; align-items: center; gap: .3em; flex-wrap: wrap;
+}
+h1 .see { color: var(--accent); }
+.eye {
+  width: .9em; height: .9em; border-radius: 50%; display: inline-block; flex: none;
+  border: .09em solid var(--hold); box-shadow: 0 0 0 .14em var(--hold-fill);
+}
+.lede { margin: 0; color: var(--muted); max-width: 64ch; }
+
+h2 { font: 700 1.25rem/1.2 var(--font-display); margin: 0 0 12px; letter-spacing: -.01em; text-wrap: balance; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; min-width: 0; }
+p { margin: 0; }
+.sub { color: var(--muted); font-size: .93rem; }
+
+kbd {
+  font: 700 .8rem/1 var(--font-mono);
+  display: inline-block; padding: .42em .6em .38em; border-radius: 6px;
+  background: var(--key); color: var(--ink);
+  border: 1px solid var(--key-edge); border-bottom-width: 3px; white-space: nowrap;
+}
+.plus { color: var(--muted); margin: 0 3px; font-size: .85rem; }
+code {
+  font: 500 .85em var(--font-mono); background: var(--key); padding: .1em .4em; border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+/* hotkeys */
+.keys { display: grid; }
+.keyrow {
+  display: grid; grid-template-columns: minmax(190px, 230px) 52px 1fr; gap: 16px; align-items: center;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.keyrow:first-child { border-top: 0; padding-top: 0; }
+.combo { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.cam { justify-self: start; }
+.what { min-width: 0; }
+.what strong { display: block; font-weight: 700; }
+.what span { color: var(--muted); font-size: .93rem; }
+.tag {
+  display: inline-block; font: 700 .66rem/1 var(--font-body); text-transform: uppercase; letter-spacing: .08em;
+  padding: 3px 6px; border-radius: 4px; background: var(--key); color: var(--muted); border: 1px solid var(--line);
+  vertical-align: 2px; margin-left: 6px;
+}
+.keynote { margin-top: 12px; color: var(--muted); font-size: .9rem; }
+
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.wide { grid-column: 1 / -1; }
+
+/* numbered steps */
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }
+ol.steps li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; counter-increment: s; }
+ol.steps li::before {
+  content: counter(s); font: 700 .9rem/30px var(--font-mono); text-align: center;
+  width: 30px; height: 30px; border-radius: 50%; background: var(--key); border: 1px solid var(--key-edge);
+}
+ol.steps li > div { min-width: 0; }
+
+/* the bubble and the status bar, drawn like the app draws them */
+.legend { display: grid; gap: 14px; }
+.legend-row { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: center; }
+.legend-row > div:last-child { min-width: 0; }
+.stage {
+  width: 120px; height: 56px; border-radius: 10px; background: var(--stage);
+  display: grid; place-items: center;
+}
+.bubble { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #ffffff; }
+.bubble.hold { border-color: var(--hold); box-shadow: 0 0 0 5px rgba(247, 208, 96, .18); }
+.bar {
+  display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 6px; color: #fff;
+  font: 700 .78rem/1.2 var(--font-body); justify-self: start; max-width: 120px;
+}
+.bar.ok { background: var(--ok); } .bar.warn { background: var(--warn); }
+.bar.idle { background: var(--idle); } .bar.bad { background: var(--bad); }
+.legend-row span { color: var(--muted); font-size: .93rem; }
+
+/* wheel */
+.wheel-sec { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
+.wheel-text { display: grid; gap: 12px; min-width: 0; }
+.wheel-text h2 { margin: 0; }
+.timings { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.timing { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 2px; }
+.timing b { font: 700 1.35rem/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.timing span { color: var(--muted); font-size: .86rem; }
+.wheel-demo { display: grid; justify-items: center; gap: 8px; }
+.wheel-demo svg { width: 100%; max-width: 250px; height: auto; }
+.wheel-demo .cap { color: var(--muted); font-size: .85rem; text-align: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips span { font-size: .85rem; padding: 4px 10px; border-radius: 999px; background: var(--key); border: 1px solid var(--line); }
+.chips span.live { border-color: var(--ok); }
+.chips i { font-style: normal; color: var(--muted); margin-left: 4px; font-size: .8rem; }
+
+/* lists and tables */
+ul.plain { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+ul.plain li { display: grid; gap: 1px; }
+ul.plain li strong { font-weight: 700; }
+ul.plain li span { color: var(--muted); font-size: .93rem; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .93rem; }
+th, td { text-align: left; padding: 9px 10px 9px 0; border-top: 1px solid var(--line); vertical-align: top; }
+th { font: 700 .72rem/1.2 var(--font-body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); border-top: 0; }
+td.y { color: var(--ok); font-weight: 700; } td.n { color: var(--muted); }
+td .sub { display: block; }
+
+.look { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.look div { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; text-align: center; }
+.look b { display: block; font: 700 1.1rem/1.2 var(--font-display); }
+.look span { color: var(--muted); font-size: .86rem; }
+
+.tips { display: grid; gap: 12px; }
+.tip { display: grid; gap: 2px; padding-left: 14px; border-left: 3px solid var(--line); }
+.tip strong { font-weight: 700; }
+.tip span { color: var(--muted); font-size: .93rem; }
+
+pre {
+  margin: 0; font: 500 .84rem/1.6 var(--font-mono); background: var(--key); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px 14px; overflow-x: auto;
+}
+pre .c { color: var(--muted); }
+
+footer { color: var(--muted); font-size: .88rem; text-align: center; padding-top: 4px; }
+
+@media (max-width: 760px) {
+  .grid, .wheel-sec { grid-template-columns: 1fr; }
+  .keyrow { grid-template-columns: 1fr auto; gap: 8px; }
+  .keyrow .what { grid-column: 1 / -1; }
+  section { padding: 18px; }
+}
+@media (max-width: 420px) {
+  .legend-row { grid-template-columns: 1fr; gap: 6px; }
+  .look { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="label">Quick reference</p>
+    <h1><span class="eye" aria-hidden="true"></span><span>mou<span class="see">SEE</span></span></h1>
+    <p class="lede">Point at the screen with your eyes, using a normal webcam. A bubble shows where mouSEE thinks you're looking, and the cursor can follow it. Everything in calibration works hands-free: instructions are spoken, and you answer by looking right or left.</p>
+  </header>
+
+  <section aria-labelledby="hk">
+    <h2 id="hk">Hotkeys</h2>
+    <div class="keys">
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>M</kbd></div>
+        <div class="cam"></div>
+        <div class="what"><strong>Cursor follows your eyes, on or off</strong><span>The status bar turns orange while it's on.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>W</kbd></div>
+        <div class="cam"></div>
+        <div class="what"><strong>Open or close the action wheel</strong><span>At the bubble. Works in every head mode.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>R</kbd></div>
+        <div class="cam"><kbd>r</kbd></div>
+        <div class="what"><strong>Re-center</strong><span>Look at the dot in the middle for 2 seconds. Fixes a small shift from sitting differently today.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>F</kbd></div>
+        <div class="cam"><kbd>f</kbd></div>
+        <div class="what"><strong>Accuracy test and fine-tune</strong><span>Dots all over the screen. Shows how far off the bubble is, then refits the calibration with them if you keep it.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>C</kbd></div>
+        <div class="cam"><kbd>c</kbd></div>
+        <div class="what"><strong>Calibrations window</strong><span>Switch, delete or make calibrations. Smoothing and the head mode are here too.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>P</kbd></div>
+        <div class="cam"><kbd>p</kbd></div>
+        <div class="what"><strong>Pause or unpause</strong><span>The bubble stops and the status bar turns grey.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>Q</kbd></div>
+        <div class="cam"><kbd>q</kbd></div>
+        <div class="what"><strong>Quit</strong></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>L</kbd></div>
+        <div class="cam"></div>
+        <div class="what"><strong>Test left-click <span class="tag">For testing</span></strong><span>Clicks at the cursor after 1 second, once Ctrl and Alt are released.</span></div>
+      </div>
+      <div class="keyrow">
+        <div class="combo"><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>T</kbd></div>
+        <div class="cam"></div>
+        <div class="what"><strong>Mouse test mode <span class="tag">For testing</span></strong><span>Opens the wheel in the middle, and lets you try it with the mouse instead of your eyes.</span></div>
+      </div>
+    </div>
+    <p class="keynote">The Ctrl+Alt keys work from any program. The single letters in the middle column work only while the camera window is focused.</p>
+  </section>
+
+  <section aria-labelledby="wheel" class="wheel-sec">
+    <div class="wheel-text">
+      <h2 id="wheel">Action wheel</h2>
+      <p class="sub">Look at one spot and the wheel opens around it. Then look at an option until its arc fills. While the wheel is open, your eyes pick options instead of moving the cursor.</p>
+      <div class="timings">
+        <div class="timing"><b>1.0 s</b><span>looking within 35 px of one spot opens it</span></div>
+        <div class="timing"><b>0.9 s</b><span>on an option picks it</span></div>
+        <div class="timing"><b>0.15 s</b><span>looking away this long starts the option's timer over. A shorter glance keeps it</span></div>
+        <div class="timing"><b>0.8 s</b><span>after it closes, before looking can open it again</span></div>
+      </div>
+      <p class="sub">Opening it by looking needs the cursor following your eyes (<kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>M</kbd>) and the <strong style="color:var(--ink)">Eyes only</strong> head mode, since the nudge modes already hold the bubble on a resting gaze. <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>W</kbd> works in every mode. The center and the empty slot pick nothing.</p>
+      <div class="chips" aria-label="Wheel options">
+        <span class="live">Keyboard <i>opens the on-screen keyboard</i></span>
+        <span class="live">Cancel <i>closes the wheel</i></span>
+        <span>Left click <i>not connected yet</i></span><span>Double click <i>not yet</i></span>
+        <span>Right click <i>not yet</i></span><span>Drag <i>not yet</i></span><span>Scroll <i>not yet</i></span>
+      </div>
+    </div>
+    <div class="wheel-demo">
+      <svg viewBox="0 0 200 200" role="img" aria-label="The wheel: eight slots around a center, Right Click being picked">
+        <circle cx="100" cy="100" r="96" fill="var(--stage)"/>
+        <g fill="none" stroke="#ffffff" stroke-opacity=".28" stroke-width="1.2">
+          <circle cx="100" cy="100" r="92"/><circle cx="100" cy="100" r="33"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(22.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(67.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(112.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(157.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(202.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(247.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(292.5 100 100)"/>
+          <line x1="100" y1="100" x2="100" y2="8" transform="rotate(337.5 100 100)"/>
+        </g>
+        <circle cx="100" cy="100" r="33" fill="#000" fill-opacity=".35"/>
+        <path d="M 135.2 15.0 A 92 92 0 0 1 165.1 34.9" fill="none" stroke="#f7d060" stroke-width="5" stroke-linecap="round"/>
+        <g font-family="Atkinson Hyperlegible, Segoe UI, sans-serif" font-size="9.5" font-weight="700" fill="#ffffff" text-anchor="middle">
+          <text x="100" y="40">Double</text>
+          <text x="143" y="58" fill="#f7d060">Right</text>
+          <text x="162" y="103">Keys</text>
+          <text x="100" y="168">Cancel</text>
+          <text x="57" y="146">Scroll</text>
+          <text x="38" y="103">Drag</text>
+          <text x="57" y="58">Left</text>
+        </g>
+        <text x="100" y="104" text-anchor="middle" font-family="Familjen Grotesk, Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#ffffff">Right Click</text>
+      </svg>
+      <p class="cap">The yellow arc fills as you keep looking at an option.</p>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section aria-labelledby="use">
+      <h2 id="use">Everyday use</h2>
+      <ol class="steps">
+        <li><div><strong>Start it with <code>make run</code></strong><div class="sub">The first time, it asks whether to calibrate. Look right for yes.</div></div></li>
+        <li><div><strong>Look at the dot in the middle</strong><div class="sub">A quick re-center runs every start, so the bubble fits how you sit today.</div></div></li>
+        <li><div><strong>Check the status bar is green</strong><div class="sub">Bottom left. The bubble shows where you're looking.</div></div></li>
+        <li><div><strong>Press <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>M</kbd> to move the cursor</strong><div class="sub">Rest your eyes on a spot to open the action wheel.</div></div></li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="seen">
+      <h2 id="seen">What you see</h2>
+      <div class="legend">
+        <div class="legend-row"><div class="stage"><div class="bubble"></div></div><div><strong>White bubble</strong><br><span>Following your eyes.</span></div></div>
+        <div class="legend-row"><div class="stage"><div class="bubble hold"></div></div><div><strong>Yellow bubble</strong><br><span>Holding on a spot. Turn or tilt your head to nudge it. Head nudge modes only.</span></div></div>
+        <div class="legend-row"><span class="bar ok">Tracking</span><div><strong>Green</strong><br><span>All good.</span></div></div>
+        <div class="legend-row"><span class="bar warn">Cursor on</span><div><strong>Orange</strong><br><span>The cursor is moving, tracking is coming back, your eyes are closed, or mouse test mode is on.</span></div></div>
+        <div class="legend-row"><span class="bar idle">Paused</span><div><strong>Grey</strong><br><span>Starting the camera, or paused.</span></div></div>
+        <div class="legend-row"><span class="bar bad">Lost</span><div><strong>Red</strong><br><span>Face lost, frames stopped, or the tracker quit. The bar says why.</span></div></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="calib">
+      <h2 id="calib">Calibration</h2>
+      <ol class="steps">
+        <li><div><strong>Grid</strong><div class="sub">The logo moves to 20 places, 5 by 4. Look at each one while its ring fills.</div></div></li>
+        <li><div><strong>Head step</strong><div class="sub">16 dots while leaning left and right and tilting your head up and down. A live hint says how far.</div></div></li>
+        <li><div><strong>Check</strong><div class="sub">If dots got too few usable frames, it says why and where, then redoes the whole thing, then only the missed dots. Nothing is saved until it passes.</div></div></li>
+        <li><div><strong>Preview</strong><div class="sub">The bubble live with the new calibration. Keep it, or do the grid again.</div></div></li>
+        <li><div><strong>Eye check</strong><div class="sub">Close both eyes when asked, so it learns when your eyes count as closed.</div></div></li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="look">
+      <h2 id="look">Answering by looking</h2>
+      <p class="sub">Every question in calibration works without hands. Hold your eyes on one side until its bar fills.</p>
+      <div class="look">
+        <div><b>Right → Yes</b><span>3 seconds</span></div>
+        <div><b>Left → No</b><span>3 seconds</span></div>
+      </div>
+      <ul class="plain" style="margin-top:14px">
+        <li><strong>Look at the middle first</strong><span>It only counts after your eyes have been in the middle, so you read the question before answering.</span></li>
+        <li><strong>Screens you look around on</strong><span>Like the grid's preview. Close your eyes for 1.5 s first to say you're done looking.</span></li>
+        <li><strong>Use your eyes, not your head</strong><span>Turning your head can read as the opposite answer.</span></li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="heads" class="wide">
+      <h2 id="heads">Head modes</h2>
+      <p class="sub" style="margin-bottom:10px">What moving your head does. Pick one in the calibrations window, under <strong style="color:var(--ink)">What your head does</strong>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Mode</th><th>Head correction</th><th>Head nudge</th><th>What your head does</th><th>Wheel by looking</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Eyes only</strong><span class="sub">default</span></td><td class="y">On</td><td class="n">Off</td><td>Nothing, the correction undoes it</td><td class="y">Yes</td></tr>
+            <tr><td><strong>Eyes + head nudge</strong></td><td class="y">On</td><td class="y">On</td><td>Moves the bubble only on purpose, while it's yellow</td><td class="n">Ctrl+Alt+W only</td></tr>
+            <tr><td><strong>Eyes + head nudge, no head correction</strong><span class="sub">for comparing</span></td><td class="n">Off</td><td class="y">On</td><td>Moves it all the time, on purpose only while yellow</td><td class="n">Ctrl+Alt+W only</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="make">
+      <h2 id="make">Make commands</h2>
+      <p class="sub" style="margin-bottom:12px">From the project folder, in Git Bash. <code>make</code> has to be the MSYS2 one.</p>
+<pre><span class="c"># first time</span>
+make setup
+<span class="c"># the app with the camera window</span>
+make run
+make run 720               <span class="c"># 360 · 480 · 720 · 1080</span>
+make run ARGS="--calibrate"
+<span class="c"># tests, then the tracker on its own</span>
+make test
+make tracker
+make cameras               <span class="c"># which camera is which</span></pre>
+    </section>
+
+    <section aria-labelledby="set">
+      <h2 id="set">Settings file</h2>
+      <p class="sub" style="margin-bottom:12px"><code>app/Settings/settings.json</code>, made with the defaults on first run and never committed. Close mouSEE before editing it, or use the calibrations window where there's a control.</p>
+      <ul class="plain">
+        <li><strong><code>cursor.smoothing</code> · <code>cursor.sensitivity</code></strong><span>Smoothing on or off, and 0 (steadiest) to 1 (quickest). Try 0.25 if the bubble bounces.</span></li>
+        <li><strong><code>head.mode</code></strong><span><code>cancel</code> · <code>both</code> · <code>nudge</code>, the three head modes in order.</span></li>
+        <li><strong><code>camera.resolution</code> · <code>camera.fps</code></strong><span>1080p and 60 fps by default.</span></li>
+        <li><strong><code>calibration.recenterOnStart</code></strong><span>The quick re-center at every start.</span></li>
+        <li><strong>Wheel timings</strong><span>Fixed for now, in <code>WheelSettings</code>. Ready to become settings when the settings menu is built.</span></li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="fix" class="wide">
+      <h2 id="fix">If something's off</h2>
+      <div class="tips">
+        <div class="tip"><strong>The bubble is a bit off everywhere</strong><span>Press <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>R</kbd> to re-center. Still off: <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>F</kbd> for the accuracy test and fine-tune.</span></div>
+        <div class="tip"><strong>The bubble bounces</strong><span>Lower <strong>Sensitivity</strong> under Smoothing in the calibrations window. 0.25 is steady. Lower still holds stiller but follows small moves later.</span></div>
+        <div class="tip"><strong>It drifts when you move your head</strong><span>Sit like you did during calibration, and follow the yellow where-to-sit hints. Tilting your head up or down throws off up/down the most.</span></div>
+        <div class="tip"><strong>Ctrl+Alt+M does nothing</strong><span>It needs a calibration in use. Make one in the calibrations window (<kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>C</kbd>). A fine-tune isn't required, but it makes the cursor land closer.</span></div>
+        <div class="tip"><strong>The wheel keeps opening by itself</strong><span>It opens after 1 s on one spot, in Eyes only. Switch to a head nudge mode to open it only with <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>W</kbd>.</span></div>
+        <div class="tip"><strong>Calibration says it needs another try</strong><span>It tells you why: face out of view, eyes closed or covered, or too few frames. Fix that and look right to try again.</span></div>
+        <div class="tip"><strong>Build fails with MSB3027</strong><span>mouSEE is still running and has the file locked. Close it with <kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>Q</kbd>, then build again.</span></div>
+      </div>
+    </section>
+  </div>
+
+  <footer>Every folder has a README, and <code>docs/OVERVIEW.md</code> is the place to start.</footer>
+</div>
+</body>
+</html>

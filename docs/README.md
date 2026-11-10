@@ -5,6 +5,7 @@ Start with [OVERVIEW.md](OVERVIEW.md): what mouSEE does, how the pieces fit toge
 | | |
 |---|---|
 | `OVERVIEW.md` | start here |
+| `REFERENCE.html` | one-page quick reference for using mouSEE: keys, the action wheel, colours, head modes, fixes. Open it in a browser |
 | `SETUP.md`, `COMMANDS.md` | installing, and running things by hand |
 | `SETTINGS.md` | every setting and key |
 | `LOOK-TO-ANSWER.md` | answering by looking, and the middle dot |

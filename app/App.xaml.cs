@@ -391,12 +391,13 @@ public partial class App : Application
 
     private string? _offsetCalibrationId;
 
-    /// <summary>Toggles cursor movement on/off. Only works if there's an active calibration with a fine-tune.</summary>
+    /// <summary>Toggles cursor movement on/off. Only works if there's an active calibration.</summary>
     public void ToggleCursorMovement()
     {
-        // Can only enable if we have a calibration that's been fine-tuned
-        bool canEnable = Calibrations.Active is not null && Calibrations.Active.FineTuneReport is not null;
-        if (!canEnable && !IsCursorMovementEnabled) return; // Don't enable without calibration + fine-tune
+        // any calibration will do. it used to need a fine-tune as well, which made the hotkey do nothing on a new
+        // calibration without saying why. the fine-tune (Ctrl+Alt+F) still makes the bubble land closer
+        bool canEnable = Calibrations.Active is not null;
+        if (!canEnable && !IsCursorMovementEnabled) return;
 
         IsCursorMovementEnabled = !IsCursorMovementEnabled;
         CursorMovementChanged?.Invoke();
