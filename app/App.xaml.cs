@@ -39,7 +39,11 @@ public partial class App : Application
 
     // the eye check or the grid screen, whichever is open. only one calibration at a time
     private Window? _calibrationWindow;
+
     private CalibrationListWindow? _calibrationListWindow;
+
+    //Main menu window 
+    private app.UI.MainMenuWindow? _mainMenuWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -69,6 +73,7 @@ public partial class App : Application
                 case "r": StartRecenter(); break;
                 case "f": StartAccuracyTest(); break;
                 case "m": ToggleCursorMovement(); break;
+                case "s": ToggleMainMenu(); break;
             }
         };
 
@@ -93,6 +98,9 @@ public partial class App : Application
         // the way you sit changes a bit from one day to the next, a quick re-center takes care of most of it
         else if (Calibrations.Active is not null && Settings.Current.Calibration.RecenterOnStart)
             StartRecenter();
+
+        // Open the main menu
+        // new app.UI.MainMenuWindow().Show();
     }
 
     /// <summary>Starts the shared tracker with the current settings. Does nothing if it's already running.</summary>
@@ -504,6 +512,20 @@ public partial class App : Application
     {
         await RestartTrackerIfNeededAsync();
         await _restarting;
+    }
+
+    private void ToggleMainMenu()
+    {
+        if (_mainMenuWindow == null || !_mainMenuWindow.IsVisible)
+        {
+            _mainMenuWindow = new app.UI.MainMenuWindow();
+            _mainMenuWindow.Closed += (_, _) => _mainMenuWindow = null;
+            _mainMenuWindow.Show();
+        }
+        else
+        {
+            _mainMenuWindow.Close();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

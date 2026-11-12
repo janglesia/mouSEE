@@ -300,14 +300,14 @@ class Preview(threading.Thread):
             label = state.upper() + (f": {tracking['reason']}" if tracking["reason"] else "")
             color = {"ok": (0, 200, 0), "eyes_closed": (0, 165, 255)}.get(state, (0, 0, 255))
             cv2.putText(view, label, (10, fh - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            cv2.imshow("Tracker preview (q quit, p pause, c calibrations, r re-center, f fine-tune)", view)
+            cv2.imshow("Tracker preview (q quit, p pause, c calibrations, r re-center, f fine-tune, s settings(menu))", view)
             # the app quits on q, pauses on p, opens the calibrations on c, re-centers on r and fine-tunes on f.
             # on its own (make tracker) q closes this and the others do nothing
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 emit({"type": "key", "key": "q"})
                 self.closed.set()
-            elif key in (ord("p"), ord("c"), ord("r"), ord("f")):
+            elif key in (ord("p"), ord("c"), ord("r"), ord("f"), ord("s")):
                 emit({"type": "key", "key": chr(key)})
             # 30 fps is plenty for a preview, leave the rest of the CPU for tracking
             time.sleep(max(0.0, 1 / 30 - (time.monotonic() - shown_at)))
