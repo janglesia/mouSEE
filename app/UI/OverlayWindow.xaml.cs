@@ -46,7 +46,7 @@ public partial class OverlayWindow : Window
     // ---- Action Wheel Dwell Trigger ----
     private Point _lastGazeCanvasPoint;
     private long _wheelClosedMs = long.MinValue / 2;
-    // the dwell times, fixed for now. as settings this becomes _settings.Current.Wheel, see WheelSettings
+    // internal wheel settings remain fixed until settings API owns them.
     private static readonly WheelSettings Wheel = new();
     // looking at one spot opens the wheel, see app/Input/GazeDwell.cs
     private readonly GazeDwell _openDwell = new(Wheel.OpenDwellMs, Wheel.LeaveMs);
@@ -75,6 +75,7 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
+        ApplyWheelSettings(Wheel);
 
         _monitor = new TrackingMonitor(_settings.Current.Advanced, _settings.Current.Tracking.Paused);
         _nudge = new HeadNudge(_settings.Current.Head);
@@ -129,6 +130,13 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_WHEEL);
             UnregisterHotKey(hwnd, HOTKEY_TEST_MODE);
         };
+    }
+
+    public void ApplyWheelSettings(WheelSettings settings)
+    {
+        _openDwell.DwellMs = settings.OpenDwellMs;
+        _openDwell.LeaveMs = settings.LeaveMs;
+        ClickWheel.Settings = settings;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

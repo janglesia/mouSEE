@@ -6,7 +6,8 @@ namespace app.Input;
 /// bubble shakes, see app/Bubble/OneEuroFilter.cs) doesn't throw the time away. Staying on another target for leaveMs
 /// moves the timer to that one, counted from when the gaze got there.
 /// A target is any number the caller picks, the wheel's options for one. UpdateSpot is for a resting gaze instead: the
-/// target is a circle around where it came to rest. The numbers come from WheelSettings for now, see app/Settings/AppSettings.cs
+/// target is a circle around where it came to rest. The action-wheel callers currently provide their durations from
+/// internal WheelSettings, see app/Settings/AppSettings.cs
 /// </summary>
 public sealed class GazeDwell(int dwellMs, int leaveMs)
 {

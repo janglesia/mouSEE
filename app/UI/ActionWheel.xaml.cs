@@ -55,7 +55,7 @@ public partial class ActionWheel : UserControl
     // looking at an option long enough picks it, see app/Input/GazeDwell.cs
     private readonly GazeDwell _dwell = new(new WheelSettings().SelectDwellMs, new WheelSettings().LeaveMs);
 
-    // SelectDwellMs and LeaveMs, for when they're settings
+    // Applies internal wheel settings, including the option-selection dwell duration.
     public WheelSettings Settings
     {
         set => (_dwell.DwellMs, _dwell.LeaveMs) = (value.SelectDwellMs, value.LeaveMs);

@@ -80,6 +80,20 @@ public class GazeDwellTests
     }
 
     [Fact]
+    public void A_changed_duration_applies_to_the_current_dwell()
+    {
+        var dwell = new GazeDwell(1000, 150);
+
+        for(long ms = 0; ms <= 400; ms += Frame)
+        {
+            Assert.False(dwell.Update(ms, 3));
+        }
+
+        dwell.DwellMs = 500;
+        Assert.True(Look(dwell, 3, 416, 520));
+    }
+
+    [Fact]
     public void A_resting_gaze_picks_its_spot()
     {
         var dwell = new GazeDwell(1000, 150);
@@ -122,6 +136,23 @@ public class GazeDwellTests
         Assert.Equal(1000, wheel.OpenDwellMs);
         Assert.Equal(35, wheel.OpenRadiusPx);
         Assert.Equal(900, wheel.SelectDwellMs);
+        Assert.Equal(150, wheel.LeaveMs);
         Assert.Equal(800, wheel.CooldownMs);
+    }
+
+    [Fact]
+    public void Wheel_opening_and_selection_durations_are_configured_independently()
+    {
+        var wheel = new WheelSettings
+        {
+            OpenDwellMs = 900,
+            SelectDwellMs = 900
+        };
+
+        var openingDwell = new GazeDwell(wheel.OpenDwellMs, wheel.LeaveMs);
+        var selectionDwell = new GazeDwell(wheel.SelectDwellMs, wheel.LeaveMs);
+
+        Assert.Equal(wheel.OpenDwellMs, openingDwell.DwellMs);
+        Assert.Equal(wheel.SelectDwellMs, selectionDwell.DwellMs);
     }
 }
