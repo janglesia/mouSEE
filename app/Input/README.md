@@ -56,11 +56,32 @@ This is the infrastructure for cursor movement. It is not yet connected to gaze 
 
 ## MouseClicker
 
-`MouseClicker` performs a real Windows left-click with `SendInput`, at the current cursor position.
-It implements `IClickInjector.LeftClick()` so triggers (dwell, blink) and tests can use a fake.
+`MouseClicker` performs real Windows clicks with `SendInput`, at the current cursor position.
+It implements `IClickInjector` so triggers (dwell, blink, the action wheel) and tests can use a fake.
 
-- Returns true only if Windows accepted both the press and the release.
-- `OverlayWindow.TryClick()` is the one gate: only while `IsCursorMovementEnabled && TrackingMonitor.CanMoveCursor`.
-- Temporary test hotkey: Ctrl+Alt+L (clicks after 1 s, so Ctrl+Alt are released first).
+- `LeftClick()`: left button down, up.
+- `RightClick()`: right button down, up. Apps open the context menu on the button-up.
+- `DoubleClick()`: down, up, down, up in one `SendInput` call, so Windows sees it as a double-click
+  (same spot, within `GetDoubleClickTime()`). The target window needs the `CS_DBLCLKS` class style, which standard controls have.
+- Each returns true only if Windows accepted every event.
+- `OverlayWindow.TryClick()`, `TryRightClick()` and `TryDoubleClick()` are the one gate: only while
+  `IsCursorMovementEnabled && TrackingMonitor.CanMoveCursor`, and never in mouse test mode.
+- The action wheel's Left click, Right click and Double click slices call these after moving the cursor to where the wheel opened.
 - Windows ignores injected clicks on elevated windows unless mouSEE runs elevated.
 
+
+### Temporary test hotkeys
+
+These are for testing only and will be removed once the dwell/blink triggers work.
+All of them wait 1 s before clicking, so Ctrl+Alt are released first.
+
+| Hotkey | Click | Gate |
+|---|---|---|
+| Ctrl+Alt+L | Left | Yes: needs cursor movement on and good tracking |
+| Ctrl+Alt+J | Left | No |
+| Ctrl+Alt+K | Right | No |
+| Ctrl+Alt+D | Double | No |
+
+J, K and D click wherever the physical mouse is, so they can test the click code with cursor movement off.
+They also work in mouse test mode (Ctrl+Alt+T): the overlay is made click-through just for the click, then restored.
+The result is written to the Output window as `[click-test] ... sent` or `FAILED` (usually an elevated target window).

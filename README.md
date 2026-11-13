@@ -82,7 +82,7 @@ mouSEE/
       settings.json              your settings (made by the app, not in git)
     Input/                     moving the cursor and clicking
       CursorController.cs        moves the real cursor to a point on the screen
-      MouseClicker.cs            left-clicks where the cursor is
+      MouseClicker.cs            left-clicks, right-clicks, and double-clicks where the cursor is
     assets/mouSEE-logo.png     logo, used as the calibration target
   tracker/                     Python face tracking
     face_tracker.py            reads the webcam, finds the face, sends results to the app
@@ -127,7 +127,7 @@ mouSEE/
 
 **Tracker/TrackerClient.cs** starts `tracker/face_tracker.py` (using `tracker/.venv` if it exists), passes it the camera settings and the app's command line options, and turns each line it prints into a `TrackerMessage`. It finds the `tracker` folder by searching upward from where the app runs. There's one `TrackerClient` for the whole app that all windows share.
 
-**OverlayWindow** covers the screen without getting in the way: it draws the bubble where you look, and in the bottom left corner a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses, **Ctrl+Alt+C** opens the saved calibrations, **Ctrl+Alt+R** re-centers, **Ctrl+Alt+F** fine-tunes, **Ctrl+Alt+M** toggles the cursor to follow the gaze bubble, **Ctrl+Alt+L** clicks where the cursor is (temp test key until dwell/blink is implemented). In the camera window, plain **q**, **p**, **c**, **r** and **f** do the same. A yellow bar under the status bar says when you've moved too far from where you sat during calibration (and which way to go), or when a re-center would help.
+**OverlayWindow** covers the screen without getting in the way: it draws the bubble where you look, and in the bottom left corner a coloured status bar saying whether tracking works (and what to do if not), and below it fps, head angle, irises, blinks and gaze. Clicks go through it to whatever is underneath, so it has no close button: press **Ctrl+Alt+Q** to close it, which also quits the app. **Ctrl+Alt+P** pauses and unpauses, **Ctrl+Alt+C** opens the saved calibrations, **Ctrl+Alt+R** re-centers, **Ctrl+Alt+F** fine-tunes, **Ctrl+Alt+M** toggles the cursor to follow the gaze bubble, **Ctrl+Alt+L** clicks where the cursor is (temp test key until dwell/blink is implemented). **Ctrl+Alt+J**, **K** and **D** are temp test keys that left-click, right-click and double-click where the mouse is, even with cursor movement off or in mouse test mode. In the camera window, plain **q**, **p**, **c**, **r** and **f** do the same. A yellow bar under the status bar says when you've moved too far from where you sat during calibration (and which way to go), or when a re-center would help.
 
 **Tracker/TrackingMonitor** takes the tracker's per-frame status and decides when it counts as lost: half a second of bad frames, so blinks don't. It also notices when the tracker stops sending anything, and knows when the user paused tracking. `CanMoveCursor` is what the cursor code should check later. The timings come from the settings.
 
@@ -151,7 +151,7 @@ mouSEE/
 
 **Makefile** has shortcuts so you don't have to remember the individual commands. See [Make commands](#make-commands).
 
-**Input** (`app/Input/`) acts on the screen. `CursorController` moves the real Windows cursor to where the gaze bubble is (toggle with **Ctrl+Alt+M**, which needs a calibration in use; a fine-tune makes it land closer), and `MouseClicker` left-clicks at the cursor's current position through `IClickInjector`, so the dwell and blink clicks can use it later. Clicks only happen while the cursor is following the gaze and tracking is good. **Ctrl+Alt+L** is a temporary test hotkey that clicks after one second. Windows ignores clicks on admin windows unless mouSEE runs as admin too. For more info, view the README.md.
+**Input** (`app/Input/`) acts on the screen. `CursorController` moves the real Windows cursor to where the gaze bubble is (toggle with **Ctrl+Alt+M**, which needs a calibration in use; a fine-tune makes it land closer), and `MouseClicker` left-clicks at the cursor's current position through `IClickInjector`, so the dwell and blink clicks can use it later. Clicks only happen while the cursor is following the gaze and tracking is good. **Ctrl+Alt+L** is a temporary test hotkey that clicks after one second. Windows ignores clicks on admin windows unless mouSEE runs as admin too. **Ctrl+Alt+J**, **K** and **D** are temporary test hotkeys that left-click, right-click and double-click after one second without those checks, for testing the clicks with a physical mouse. For more info, view the README.md. 
 
 **The bubble** (`app/Bubble/`): after the calibration puts the bubble roughly where you look, the re-center and fine-tune correct it for how you sit today, the head modes decide what moving your head does, and the where-to-sit hints tell you when you moved too far. See the [docs/bubble/](docs/bubble/) docs.
 

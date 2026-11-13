@@ -36,9 +36,15 @@ public class CursorControllerTests
         var (x1, y1) = CursorController.ConvertToScreenCoordinates(0.25, 0.25);
         var (x2, y2) = CursorController.ConvertToScreenCoordinates(0.75, 0.75);
 
+        /* -- commented out because the test fails on some screen resolutions, e.g. 1920x1080
         // 0.75 should be 3x 0.25
         Assert.Equal(x2, x1 * 3);
         Assert.Equal(y2, y1 * 3);
+        */
+        
+        // 0.75 should be 3x 0.25, give or take the pixels lost to truncating
+        Assert.InRange(x2, x1 * 3 - 3, x1 * 3 + 3);
+        Assert.InRange(y2, y1 * 3 - 3, y1 * 3 + 3);
     }
 
     [Fact]

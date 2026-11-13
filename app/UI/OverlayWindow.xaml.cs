@@ -22,10 +22,12 @@ public partial class OverlayWindow : Window
 
     private const int HOTKEY_QUIT = 1, HOTKEY_PAUSE = 2, HOTKEY_CALIBRATIONS = 3,
                       HOTKEY_RECENTER = 4, HOTKEY_FINETUNE = 5, HOTKEY_CURSOR = 6,
-                      HOTKEY_CLICK = 7, HOTKEY_WHEEL = 8, HOTKEY_TEST_MODE = 9;
+                      HOTKEY_CLICK = 7, HOTKEY_WHEEL = 8, HOTKEY_TEST_MODE = 9,
+                      HOTKEY_TEST_LEFT = 10, HOTKEY_TEST_RIGHT = 11, HOTKEY_TEST_DOUBLE = 12; // TEMP click tests
     private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2,
                        VK_C = 0x43, VK_P = 0x50, VK_Q = 0x51, VK_R = 0x52,
-                       VK_F = 0x46, VK_M = 0x4D, VK_L = 0x4C, VK_W = 0x57, VK_T = 0x54;
+                       VK_F = 0x46, VK_M = 0x4D, VK_L = 0x4C, VK_W = 0x57, VK_T = 0x54,
+                       VK_J = 0x4A, VK_K = 0x4B, VK_D = 0x44; // TEMP click tests
     private const int WM_HOTKEY = 0x0312;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
@@ -129,6 +131,9 @@ public partial class OverlayWindow : Window
             UnregisterHotKey(hwnd, HOTKEY_CLICK);
             UnregisterHotKey(hwnd, HOTKEY_WHEEL);
             UnregisterHotKey(hwnd, HOTKEY_TEST_MODE);
+            UnregisterHotKey(hwnd, HOTKEY_TEST_LEFT);
+            UnregisterHotKey(hwnd, HOTKEY_TEST_RIGHT);
+            UnregisterHotKey(hwnd, HOTKEY_TEST_DOUBLE);
         };
     }
 
@@ -156,6 +161,11 @@ public partial class OverlayWindow : Window
         RegisterHotKey(hwnd, HOTKEY_CLICK, MOD_CONTROL | MOD_ALT, VK_L); // Ctrl+Alt+L for left click
         RegisterHotKey(hwnd, HOTKEY_WHEEL, MOD_CONTROL | MOD_ALT, VK_W);
         RegisterHotKey(hwnd, HOTKEY_TEST_MODE, MOD_CONTROL | MOD_ALT, VK_T);
+
+        // TEMP click tests, no gate: Ctrl+Alt+J left, K right, D double
+        RegisterHotKey(hwnd, HOTKEY_TEST_LEFT, MOD_CONTROL | MOD_ALT, VK_J);
+        RegisterHotKey(hwnd, HOTKEY_TEST_RIGHT, MOD_CONTROL | MOD_ALT, VK_K);
+        RegisterHotKey(hwnd, HOTKEY_TEST_DOUBLE, MOD_CONTROL | MOD_ALT, VK_D);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -199,14 +209,31 @@ public partial class OverlayWindow : Window
                 handled = true;
                 ToggleMouseTestMode();
                 break;
+            case HOTKEY_TEST_LEFT:
+                handled = true;
+                _ = TestClickAfterDelayAsync("left", _clicker.LeftClick);
+                break;
+            case HOTKEY_TEST_RIGHT:
+                handled = true;
+                _ = TestClickAfterDelayAsync("right", _clicker.RightClick);
+                break;
+            case HOTKEY_TEST_DOUBLE:
+                handled = true;
+                _ = TestClickAfterDelayAsync("double", _clicker.DoubleClick);
+                break;
         }
 
         return IntPtr.Zero;
     }
 
-    /// <summary>The one place a click is allowed: only while the cursor follows the gaze and tracking is good.</summary>
-    public bool TryClick() =>
-        _app.IsCursorMovementEnabled && _monitor.CanMoveCursor && _clicker.LeftClick();
+    /// <summary>The one place a click is allowed: only while the cursor follows the gaze and tracking is good.
+    /// Never in mouse test mode, where the overlay stops being click-through and the click would land on the overlay itself.</summary>
+    private bool TryInject(Func<bool> click) =>
+        _app.IsCursorMovementEnabled && _monitor.CanMoveCursor && !_isMouseTestMode && click();
+
+    public bool TryClick() => TryInject(_clicker.LeftClick);
+    public bool TryRightClick() => TryInject(_clicker.RightClick);
+    public bool TryDoubleClick() => TryInject(_clicker.DoubleClick);
 
     // Temporary. The hotkey fires while Ctrl+Alt are still held, so wait for them to be let go
     // or the target app would see Ctrl+Alt+click.
@@ -215,6 +242,40 @@ public partial class OverlayWindow : Window
         await Task.Delay(1000);
         TryClick();
     }
+
+    #region TEMP click test hotkeys (Ctrl+Alt+J/K/D). Delete this region and the TEMP lines above together.
+    // Skips the gate on purpose, so the click code can be tested with a physical mouse and no eyes.
+    // Waits 1 s so Ctrl+Alt can be released first, or the target app would see Ctrl+Alt+click.
+    // In mouse test mode the overlay isn't click-through, so it is made click-through just for the click and put back after.
+    private async Task TestClickAfterDelayAsync(string name, Func<bool> click)
+    {
+        await Task.Delay(1000);
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        int style = GetWindowLong(hwnd, GWL_EXSTYLE);
+        bool madeTransparent = _isMouseTestMode && (style & WS_EX_TRANSPARENT) == 0;
+
+        if (madeTransparent)
+            SetWindowLong(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT);
+
+        try
+        {
+            bool ok = click();
+            Debug.WriteLine($"[click-test] {name}: {(ok ? "sent" : "FAILED")}" +
+                            (_isMouseTestMode ? " (mouse test mode)" : ""));
+
+            // SendInput only queues the events. Windows works out which window gets them a moment later,
+            // so give it time before the overlay stops being click-through again.
+            if (madeTransparent)
+                await Task.Delay(200);
+        }
+        finally
+        {
+            if (madeTransparent && _isMouseTestMode)
+                SetWindowLong(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) & ~WS_EX_TRANSPARENT);
+        }
+    }
+    #endregion
 
     private void ToggleWheelManual()
     {
@@ -313,12 +374,15 @@ public partial class OverlayWindow : Window
         {
             case ClickAction.LeftClick:
                 // _cursorController.LeftClick();
+                TryClick();
                 break;
             case ClickAction.RightClick:
                 // _cursorController.RightClick();
+                TryRightClick();
                 break;
             case ClickAction.DoubleClick:
                 // _cursorController.DoubleClick();
+                TryDoubleClick();
                 break;
             case ClickAction.Keyboard:
                 LaunchOnScreenKeyboard();
