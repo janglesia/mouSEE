@@ -119,6 +119,7 @@ The code is grouped by feature: each folder has the logic and the window for one
 | [COMMANDS.md](COMMANDS.md) | run things by hand, without make |
 | [SETTINGS.md](SETTINGS.md) | see or add a setting, the keys |
 | [LOOK-TO-ANSWER.md](LOOK-TO-ANSWER.md) | answering by looking, and the middle dot |
+| [SCROLL-MODE.md](SCROLL-MODE.md) | scroll-zone backend handoff, implementation state, and UI integration contract |
 | **calibration/** | **making a calibration and what's in it** |
 | [SAVED-CALIBRATIONS.md](calibration/SAVED-CALIBRATIONS.md) | the calibration file, the recording, which one is used, the calibrations window |
 | [EYE-CALIBRATION.md](calibration/EYE-CALIBRATION.md) | the eye check: its steps, the math, how it's built |

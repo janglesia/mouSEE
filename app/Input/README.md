@@ -85,3 +85,17 @@ All of them wait 1 s before clicking, so Ctrl+Alt are released first.
 J, K and D click wherever the physical mouse is, so they can test the click code with cursor movement off.
 They also work in mouse test mode (Ctrl+Alt+T): the overlay is made click-through just for the click, then restored.
 The result is written to the Output window as `[click-test] ... sent` or `FAILED` (usually an elevated target window).
+
+## ScrollMode and MouseScroller
+
+`ScrollModeController` owns scroll activation dwell, active-scroll state, direction state, and repeated wheel timing.
+`MouseScroller` performs the OS-level vertical-wheel injection. The UI supplies a `ScrollZone` rather than directly
+calling the scroller.
+
+- `ScrollZone.Activation`: dwell here for `ScrollSettings.ActivationDwellMs` to activate scrolling.
+- `ScrollZone.Up`: emit positive wheel deltas for upward page scrolling.
+- `ScrollZone.Down`: emit negative wheel deltas for downward page scrolling.
+- `ScrollZone.Outside`: no direction while scroll mode is active.
+
+The backend contract and handoff for the future zone UI are documented in
+[docs/SCROLL-MODE.md](../../docs/SCROLL-MODE.md).

@@ -26,7 +26,7 @@ dwell, and shared leave duration without recreating either dwell controller.
 | Double Click | Double-click at current cursor |
 | Right Click | Open context menus |
 | Drag | Hold left mouse button until released |
-| Scroll | Enter scroll mode; look up/down to scroll |
+[ | Scroll | Enter scroll mode; look up/down to scroll | NOTE: Scroll is now an always present panel revealed/hidden with a collapsible tab, not an action wheel option]
 | Keyboard | Open an on-screen keyboard |
 | Cancel | Close the wheel without performing an action |
 

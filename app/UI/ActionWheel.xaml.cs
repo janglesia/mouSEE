@@ -14,7 +14,7 @@ public enum ClickAction
     RightClick,
     Keyboard,
     Cancel,
-    Scroll,
+    //Scroll,
     Drag,
     LeftClick
 }
@@ -43,7 +43,7 @@ public partial class ActionWheel : UserControl
         new(ClickAction.Keyboard,    "Keyboard",     "Open on-screen keyboard",       "KB"),  // Right (90°)
         new(ClickAction.None,        "",             "",                              "", false), // Bottom-Right (135° empty slot)
         new(ClickAction.Cancel,      "Cancel",       "Dismiss wheel",                 "✕"),   // Bottom (180°)
-        new(ClickAction.Scroll,      "Scroll",       "Toggle scroll mode",            "↕"),   // Bottom-Left (225°)
+        //new(ClickAction.Scroll,      "Scroll",       "Toggle scroll mode",            "↕"),   // Bottom-Left (225°)
         new(ClickAction.Drag,        "Drag",         "Hold left click to drag",       "✋"),  // Left (270°)
         new(ClickAction.LeftClick,   "Left Click",   "Standard single left click",    "⇱")    // Top-Left (315°)
     ];

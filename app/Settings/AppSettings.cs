@@ -106,6 +106,28 @@ public sealed record WheelSettings
     public const int DwellStepMs = 50;
 }
 
+// internal scroll-mode behavior
+// the setting screen UI can expose these properties through [Setting] metadata later.
+// for now, uses defaults
+public sealed record ScrollSettings
+{
+    // duration of gaze for the center activation zone
+    public int ActivationDwellMs { get; init; } = 900;
+
+    // brief gaze movement outside a zone is tolerated durign this interval
+    public int LeaveMs { get; init; } = 150;
+
+    // 120 is a standard mouse-wheel notch, we will use this for the scroll zones
+    public int WheelDelta { get; init; } = 120;
+
+    // both up and down zones emit wheel ticks at this interval
+    public int TickIntervalMs { get; init; } = 250;
+
+    public const int MinDwellMs = 200;
+    public const int MaxDwellMs = 5000;
+    public const int DwellStepMs = 50;
+}
+
 // same values as click_method in the Settings table (persistence/database.py)
 [JsonConverter(typeof(JsonStringEnumConverter<ClickMethod>))]
 public enum ClickMethod

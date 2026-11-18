@@ -53,6 +53,14 @@ public partial class OverlayWindow : Window
     // looking at one spot opens the wheel, see app/Input/GazeDwell.cs
     private readonly GazeDwell _openDwell = new(Wheel.OpenDwellMs, Wheel.LeaveMs);
 
+    // ---- Scroll Mode Zones ----
+    private static readonly ScrollSettings Scroll = new();
+    private readonly ScrollModeController _scrollMode = new(new MouseScroller(), Scroll);
+
+    // supplies UI hit-testing until a concrete scroll zone control is implemented
+    // null/default behavior reports Outside and does not activate scrolling
+    public IScrollZoneHitTester? ScrollZoneHitTester { get; set; }
+
     // ---- Mouse test mode ----
     private bool _isMouseTestMode = false;
 
@@ -80,6 +88,7 @@ public partial class OverlayWindow : Window
         ApplyWheelSettings(Wheel);
 
         _monitor = new TrackingMonitor(_settings.Current.Advanced, _settings.Current.Tracking.Paused);
+        _scrollMode.ApplySettings(Scroll);
         _nudge = new HeadNudge(_settings.Current.Head);
         _smoothing = new GazeSmoothing(_settings.Current.Cursor.Sensitivity);
         _monitor.Changed += UpdateStatusBar;
@@ -390,13 +399,26 @@ public partial class OverlayWindow : Window
             case ClickAction.Drag:
                 // _cursorController.ToggleLeftDown();
                 break;
-            case ClickAction.Scroll:
+            //case ClickAction.Scroll:
                 // Enter scroll mode
-                break;
+                //break;
         }
     }
 
     private void OnRecentered() => _guide.Recentered(_app.RecenteredAt);
+
+    // UI attachment point for the scroll-zone control
+    // the UI will map its activation/up/down regions to ScrollZone values and call this method
+    public void UpdateScrollZone(long nowMs, ScrollZone zone)
+    {
+        _scrollMode.Update(nowMs, zone);
+    }
+
+    // called by the collapsible tab UI when it reveals or hides the scroll zones
+    public void SetScrollZonePanelVisible(bool visible)
+    {
+        _scrollMode.SetZonePanelVisible(visible);
+    }
 
     private void OnCalibrationsChanged() => _guide.Calibrated = HeadPosition.Of(_app.Calibrations.Active);
 
@@ -505,6 +527,18 @@ public partial class OverlayWindow : Window
         Canvas.SetLeft(GazeBubble, gazeCanvasPoint.X - GazeBubble.Width / 2);
         Canvas.SetTop(GazeBubble, gazeCanvasPoint.Y - GazeBubble.Height / 2);
         GazeBubble.Visibility = Visibility.Visible;
+
+        // UI provides hit-testing for the scroll zones
+        // until the scroll zone control is implemented, it safely remains outside
+        ScrollZone gazeScrollZone = ScrollZone.Outside;
+
+        if(ScrollZoneHitTester is {} hitTester && GazeCanvas.ActualWidth > 0 && GazeCanvas.ActualHeight > 0){
+            gazeScrollZone = hitTester.HitTest(gazeCanvasPoint.X / GazeCanvas.ActualWidth, gazeCanvasPoint.Y / GazeCanvas.ActualHeight);
+        }
+
+        if(!ClickWheel.IsOpen){
+            UpdateScrollZone(now, gazeScrollZone);
+        }
 
         // 4. If ActionWheel is open and NOT in mouse test mode, feed gaze directly
         if (ClickWheel.IsOpen)
